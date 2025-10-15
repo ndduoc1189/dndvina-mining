@@ -1,0 +1,25 @@
+[Unit]
+Description=Mining Management Server
+After=network.target
+
+[Service]
+Type=simple
+User=mining
+Group=mining
+WorkingDirectory=/opt/mining-manager
+Environment=PATH=/opt/mining-manager/venv/bin
+ExecStart=/opt/mining-manager/venv/bin/python /opt/mining-manager/app.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/mining-manager
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
