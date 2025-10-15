@@ -144,7 +144,7 @@ class MiningManager:
     def get_default_files(self, mining_tool):
         """Get default required files for different mining tools"""
         default_files = {
-            'ccminer': ['ccminer.exe', 'libcrypto-1_1-x64.dll'],
+            'ccminer': ['ccminer.exe', 'libcrypto-1_1-x64.dll'],  # Windows version
             't-rex': ['t-rex.exe'],
             'gminer': ['miner.exe'],
             'xmrig': ['xmrig.exe'],
@@ -154,6 +154,21 @@ class MiningManager:
             'nbminer': ['nbminer.exe']
         }
         
+        # For Linux, we might need different files
+        if os.name == 'posix':  # Linux/Unix
+            linux_files = {
+                'ccminer': ['ccminer'],
+                't-rex': ['t-rex'],
+                'gminer': ['miner'],
+                'xmrig': ['xmrig'],
+                'teamredminer': ['teamredminer'],
+                'phoenixminer': ['PhoenixMiner'],
+                'claymore': ['ethdcrminer64'],
+                'nbminer': ['nbminer']
+            }
+            return linux_files.get(mining_tool.lower(), [mining_tool])
+        
+        # Windows default
         return default_files.get(mining_tool.lower(), [f'{mining_tool}.exe'])
     
     def auto_start_miners(self):
@@ -212,12 +227,19 @@ class MiningManager:
             if not coin_dir or not os.path.exists(coin_dir):
                 return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
             
-            # Use absolute paths in command
-            mining_exe = os.path.abspath(os.path.join(coin_dir, f"{miner.get('mining_tool', 'ccminer')}.exe"))
+            # Use mining tool name directly (without .exe extension)
+            mining_tool = miner.get('mining_tool', 'ccminer')
+            mining_exe = os.path.abspath(os.path.join(coin_dir, mining_tool))
             config_file = os.path.abspath(miner['config_file'])
             
+            # Check if executable exists (try with and without .exe for cross-platform)
             if not os.path.exists(mining_exe):
-                return {'success': False, 'message': f'Mining executable not found: {mining_exe}'}
+                # Try with .exe extension for Windows
+                mining_exe_win = mining_exe + '.exe'
+                if os.path.exists(mining_exe_win):
+                    mining_exe = mining_exe_win
+                else:
+                    return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
             
             if not os.path.exists(config_file):
                 return {'success': False, 'message': f'Config file not found: {config_file}'}
@@ -585,7 +607,13 @@ def list_miners():
             config_file = config.get('config_file', '')
             
             if coin_dir and config_file:
-                mining_exe = os.path.abspath(os.path.join(coin_dir, f"{mining_tool}.exe"))
+                # Try to find the executable (with or without .exe)
+                mining_exe = os.path.abspath(os.path.join(coin_dir, mining_tool))
+                if not os.path.exists(mining_exe):
+                    mining_exe_win = mining_exe + '.exe'
+                    if os.path.exists(mining_exe_win):
+                        mining_exe = mining_exe_win
+                
                 display_cmd = f'"{mining_exe}" -c "{config_file}"'
             else:
                 display_cmd = config.get('cmd', 'Not configured')
