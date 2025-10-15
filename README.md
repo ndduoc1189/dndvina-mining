@@ -113,7 +113,44 @@ Body:
 {"name": "vrsc"}
 ```
 
-### 4. Kiểm tra trạng thái
+### 4. Dừng mining
+**POST** `/api/stop`
+
+```json
+{"name": "vrsc"}
+```
+
+Hoặc dừng nhiều miners:
+```json
+{"names": ["vrsc", "bitcoin"]}
+```
+
+### 5. Force kill tất cả mining processes (Emergency Stop)
+**POST** `/api/kill-all`
+
+```json
+{"process_names": ["ccminer", "t-rex", "xmrig"]}  // optional
+```
+
+**Cách hoạt động:**
+- **Auto-detect**: Nếu không có `process_names`, sẽ tự động lấy mining tools từ miners đã config (ccminer, t-rex, xmrig, etc.)
+- **Cross-platform**: Tìm cả `.exe` và non-`.exe` versions
+- **Process scanning**: Scan tất cả running processes để tìm matching names
+- **Force kill**: Kill parent process và tất cả children
+- **Reset status**: Set tất cả miners về "stopped"
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Force killed 3 mining processes", 
+  "killed_count": 3,
+  "active_tools_before_kill": ["ccminer", "t-rex"],
+  "target_process_names": ["ccminer", "ccminer.exe", "t-rex", "t-rex.exe"]
+}
+```
+
+### 6. Kiểm tra trạng thái
 **GET** `/api/status?name=vrsc-gpu1`
 
 Response:

@@ -287,6 +287,66 @@ class MiningManager:
             miner['status'] = 'error'
             return {'success': False, 'message': f'Failed to start miner {name}: {str(e)}'}
     
+    def kill_all_miners_by_name(self, process_names=None):
+        """Kill all mining processes by process name (brute force)"""
+        if process_names is None:
+            # Get all mining tools from current miners configuration
+            process_names = set()
+            for miner in self.miners.values():
+                mining_tool = miner.get('mining_tool', '')
+                if mining_tool:
+                    # Add both with and without .exe extension for cross-platform
+                    process_names.add(mining_tool)
+                    process_names.add(f"{mining_tool}.exe")
+            
+            # If no miners configured, use common mining tools as fallback
+            if not process_names:
+                process_names = {'ccminer', 'ccminer.exe', 'cpuminer', 'cpuminer.exe', 
+                               'xmrig', 'xmrig.exe', 't-rex', 't-rex.exe', 
+                               'miner', 'miner.exe', 'PhoenixMiner', 'PhoenixMiner.exe'}
+        
+        killed_count = 0
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    
+                    # Check if process name matches any mining process
+                    for mining_name in process_names:
+                        if mining_name.lower() in proc_name or proc_name == mining_name.lower():
+                            print(f"Found mining process: {proc.info['name']} (PID: {proc.info['pid']})")
+                            
+                            # Get children and kill them too
+                            children = proc.children(recursive=True)
+                            for child in children:
+                                try:
+                                    child.kill()
+                                    killed_count += 1
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    pass
+                            
+                            # Kill main process
+                            proc.kill()
+                            killed_count += 1
+                            break
+                            
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+                    
+        except Exception as e:
+            print(f"Error in kill_all_miners_by_name: {e}")
+        
+        return killed_count
+
+    def get_active_mining_tools(self):
+        """Get list of active mining tools from current miners"""
+        tools = set()
+        for miner in self.miners.values():
+            mining_tool = miner.get('mining_tool', '')
+            if mining_tool and miner.get('status') == 'running':
+                tools.add(mining_tool)
+        return list(tools)
+
     def stop_miner(self, name):
         """Stop a mining process"""
         if name not in self.miners:
@@ -302,20 +362,41 @@ class MiningManager:
                 # Try to terminate gracefully first
                 try:
                     parent = psutil.Process(miner['pid'])
+                    print(f"Stopping miner {name} (PID: {miner['pid']})")
+                    
+                    # Get all children processes (recursive)
                     children = parent.children(recursive=True)
+                    print(f"Found {len(children)} child processes")
+                    
+                    # Step 1: Terminate all children first
                     for child in children:
-                        child.terminate()
+                        try:
+                            print(f"Terminating child process {child.pid}")
+                            child.terminate()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    
+                    # Step 2: Terminate parent
                     parent.terminate()
                     
-                    # Wait for processes to terminate
-                    gone, still_alive = psutil.wait_procs(children + [parent], timeout=5)
+                    # Step 3: Wait for graceful shutdown
+                    gone, still_alive = psutil.wait_procs(children + [parent], timeout=3)
+                    print(f"Gracefully stopped {len(gone)} processes")
                     
-                    # Force kill if still alive
+                    # Step 4: Force kill any remaining processes
                     for proc in still_alive:
-                        proc.kill()
+                        try:
+                            print(f"Force killing process {proc.pid}")
+                            proc.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    
+                    # Step 5: Final wait to ensure all are dead
+                    if still_alive:
+                        psutil.wait_procs(still_alive, timeout=2)
                         
                 except psutil.NoSuchProcess:
-                    pass
+                    print(f"Process {miner['pid']} already terminated")
                 except Exception as e:
                     print(f"Error stopping process: {e}")
             
@@ -580,6 +661,39 @@ def stop_mining():
         else:
             return jsonify({'success': False, 'message': 'Expected "name" or "names" field'}), 400
             
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/kill-all', methods=['POST'])
+def kill_all_mining():
+    """Force kill all mining processes by process name (brute force method)
+    Expected payload: {"process_names": ["ccminer", "cpuminer"]} (optional)
+    """
+    try:
+        data = request.get_json() or {}
+        process_names = data.get('process_names', None)
+        
+        # Get current active mining tools before killing
+        active_tools = mining_manager.get_active_mining_tools()
+        
+        killed_count = mining_manager.kill_all_miners_by_name(process_names)
+        
+        # Also reset all miner statuses
+        for miner_name in mining_manager.miners:
+            miner = mining_manager.miners[miner_name]
+            miner['status'] = 'stopped'
+            miner['process'] = None
+            miner['pid'] = None
+            miner['hash_rate'] = 0
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Force killed {killed_count} mining processes',
+            'killed_count': killed_count,
+            'active_tools_before_kill': active_tools,
+            'target_process_names': list(process_names) if process_names else 'auto-detected from miners'
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
