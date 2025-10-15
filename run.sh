@@ -5,6 +5,15 @@ echo "Starting Mining Management Server with auto-restart..."
 echo "Press Ctrl+C to stop"
 echo ""
 
+# Update code from git repository
+echo "Updating code from git repository..."
+if git pull; then
+    echo "✅ Code updated successfully"
+else
+    echo "⚠️  Git pull failed, continuing with current code"
+fi
+echo ""
+
 # Install dependencies if needed
 if ! python3 -c "import flask, psutil, requests" 2>/dev/null; then
     echo "Installing dependencies..."
