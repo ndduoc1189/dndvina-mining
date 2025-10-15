@@ -58,6 +58,9 @@ class MiningManager:
             # Skip if file already exists
             if os.path.exists(file_path):
                 print(f"File {filename} already exists, skipping download")
+                # Make sure it's executable on Linux
+                if os.name == 'posix' and not filename.endswith('.dll'):
+                    os.chmod(file_path, 0o755)
                 return True
             
             print(f"Downloading {filename} from {url}...")
@@ -70,6 +73,11 @@ class MiningManager:
             with open(file_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
+            
+            # Make executable on Linux (except for .dll files)
+            if os.name == 'posix' and not filename.endswith('.dll'):
+                os.chmod(file_path, 0o755)
+                print(f"Made {filename} executable")
             
             print(f"Downloaded {filename} successfully")
             return True
