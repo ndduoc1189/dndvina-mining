@@ -365,34 +365,42 @@ class MiningManager:
                 print("[KILL-ALL] No mining processes found")
                 return 0
             
-            # Step 2: Send SIGINT (Ctrl+C) to all processes first
+            # Step 2: Send multiple SIGINT (Ctrl+C) to handle confirmation prompts
             import signal
-            print(f"[KILL-ALL] Sending SIGINT to {len(found_processes)} mining processes...")
-            still_alive = []
+            print(f"[KILL-ALL] Sending multiple SIGINT to {len(found_processes)} mining processes...")
+            all_processes = []
             
             for proc in found_processes:
                 try:
-                    proc.send_signal(signal.SIGINT)
-                    print(f"[KILL-ALL] Sent SIGINT to {proc.name()} (PID: {proc.pid})")
-                    
-                    # Also send to children
+                    # Collect all processes including children
                     children = proc.children(recursive=True)
-                    for child in children:
-                        try:
-                            child.send_signal(signal.SIGINT)
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
-                    
-                    still_alive.extend([proc] + children)
-                    
-                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    print(f"[KILL-ALL] Không thể gửi SIGINT tới {proc.pid}: {e}")
+                    all_processes.extend([proc] + children)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    all_processes.append(proc)
             
-            # Step 3: Wait for graceful shutdown
-            if still_alive:
-                print(f"[KILL-ALL] Waiting for graceful shutdown...")
-                gone, still_alive = psutil.wait_procs(still_alive, timeout=8)
-                print(f"[KILL-ALL] After SIGINT: {len(gone)} stopped, {len(still_alive)} still alive")
+            # Send multiple SIGINT signals to handle tools that prompt for confirmation
+            for attempt in range(3):  # 3 attempts to handle y/n prompts
+                for proc in all_processes:
+                    try:
+                        proc.send_signal(signal.SIGINT)
+                        if attempt == 0:
+                            print(f"[KILL-ALL] Sent SIGINT attempt {attempt + 1} to {proc.name()} (PID: {proc.pid})")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                
+                # Progressive delays
+                if attempt == 0:
+                    time.sleep(2)  # Wait for initial prompt
+                elif attempt == 1:
+                    time.sleep(1)  # Quick response to confirmation
+                elif attempt == 2:
+                    time.sleep(1)  # Final confirmation
+            
+            # Step 3: Wait for graceful shutdown after multiple SIGINT
+            if all_processes:
+                print(f"[KILL-ALL] Waiting for graceful shutdown after multiple SIGINT...")
+                gone, still_alive = psutil.wait_procs(all_processes, timeout=6)
+                print(f"[KILL-ALL] After multiple SIGINT: {len(gone)} stopped, {len(still_alive)} still alive")
                 killed_count += len(gone)
             
             # Step 4: SIGTERM for remaining processes
@@ -418,6 +426,40 @@ class MiningManager:
                         killed_count += 1
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
+                        
+            # Step 6: Special handling for stubborn astrominer processes
+            for mining_name in process_names:
+                if mining_name.lower() == 'astrominer':
+                    print("[KILL-ALL] Special astrominer cleanup...")
+                    time.sleep(2)
+                    
+                    # Find any remaining astrominer processes
+                    remaining_astrominer = []
+                    for proc in psutil.process_iter(['pid', 'name']):
+                        try:
+                            if 'astrominer' in proc.info['name'].lower():
+                                remaining_astrominer.append(proc)
+                        except:
+                            pass
+                    
+                    if remaining_astrominer:
+                        print(f"[KILL-ALL] Found {len(remaining_astrominer)} stubborn astrominer processes")
+                        for proc in remaining_astrominer:
+                            try:
+                                print(f"[KILL-ALL] Force killing stubborn astrominer PID {proc.pid}")
+                                proc.kill()
+                                killed_count += 1
+                                
+                                # Also use system command as backup
+                                import subprocess
+                                import os
+                                if os.name == 'nt':  # Windows
+                                    subprocess.run(f"taskkill /PID {proc.pid} /T /F", shell=True, capture_output=True)
+                                else:
+                                    subprocess.run(f"kill -9 {proc.pid}", shell=True, capture_output=True)
+                            except Exception as e:
+                                print(f"[KILL-ALL] Error killing stubborn astrominer {proc.pid}: {e}")
+                    break
                     
         except Exception as e:
             print(f"[KILL-ALL] Lỗi trong kill_all_miners_by_name: {e}")
@@ -561,7 +603,33 @@ class MiningManager:
         
         if miner['status'] != 'running':
             return {'success': False, 'message': f'Miner {name} không đang chạy'}
-        
+
+        # Special handling for astrominer - kill immediately with brute force
+        mining_tool = miner.get('mining_tool', '').lower()
+        if mining_tool == 'astrominer':
+            print(f"[DEBUG] Detected astrominer - using aggressive kill strategy for {name}")
+            
+            # Step 1: Try normal kill first
+            try:
+                if miner['pid']:
+                    proc = psutil.Process(miner['pid'])
+                    proc.kill()
+                    print(f"[DEBUG] Killed astrominer parent process {miner['pid']}")
+            except:
+                pass
+            
+            # Step 2: Kill all astrominer processes by name immediately
+            kill_count = self.kill_all_miners_by_name(['astrominer'])
+            print(f"[DEBUG] Aggressive astrominer kill completed: {kill_count} processes")
+            
+            # Reset miner status
+            miner['status'] = 'stopped'
+            miner['process'] = None
+            miner['pid'] = None
+            miner['hash_rate'] = 0
+            
+            return {'success': True, 'message': f'Astrominer {name} force stopped'}
+
         try:
             if miner['pid']:
                 # Try to terminate gracefully first
@@ -588,12 +656,12 @@ class MiningManager:
                         except Exception as scan_e:
                             print(f"[DEBUG] Process scan also failed: {scan_e}")
                     
-                    # Step 1: Send SIGINT (Ctrl+C) multiple times to simulate graceful shutdown
+                    # Step 1: Send SIGINT (Ctrl+C) multiple times to handle confirmation prompts
                     print(f"[DEBUG] Sending SIGINT (Ctrl+C) to mining process...")
                     import signal
                     
-                    # Send SIGINT twice for better reliability
-                    for attempt in range(2):
+                    # Send multiple SIGINT signals to handle tools that ask for confirmation
+                    for attempt in range(4):  # Increased from 2 to 4 attempts
                         try:
                             parent.send_signal(signal.SIGINT)
                             print(f"[DEBUG] Sent SIGINT attempt {attempt + 1} to parent {parent.pid}")
@@ -605,15 +673,21 @@ class MiningManager:
                                 except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                                     print(f"[DEBUG] Không thể gửi SIGINT tới tiến trình con {child.pid}: {e}")
                             
-                            # Small delay between attempts
+                            # Progressive delays to handle confirmation prompts
                             if attempt == 0:
-                                time.sleep(2)
+                                time.sleep(2)  # Wait for first prompt
+                            elif attempt == 1:
+                                time.sleep(1)  # Quick response to y/n prompt
+                            elif attempt == 2:
+                                time.sleep(1)  # Another quick response
+                            elif attempt == 3:
+                                time.sleep(1)  # Final attempt
                                 
                         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                             print(f"[DEBUG] Không thể gửi SIGINT lần thử {attempt + 1}: {e}")
                     
-                    # Wait for graceful shutdown after SIGINT
-                    print(f"[DEBUG] Waiting for graceful shutdown after SIGINT...")
+                    # Wait for graceful shutdown after multiple SIGINT
+                    print(f"[DEBUG] Waiting for graceful shutdown after multiple SIGINT...")
                     all_processes = [parent] + children
                     
                     try:
@@ -698,6 +772,26 @@ class MiningManager:
                         if mining_tool:
                             kill_count = self.kill_all_miners_by_name([mining_tool])
                             print(f"[DEBUG] Killed {kill_count} processes by name {mining_tool}")
+                            
+                            # Wait a bit and check if any astrominer processes still exist
+                            if mining_tool.lower() == 'astrominer':
+                                time.sleep(2)
+                                astrominer_procs = []
+                                for proc in psutil.process_iter(['pid', 'name']):
+                                    try:
+                                        if 'astrominer' in proc.info['name'].lower():
+                                            astrominer_procs.append(proc)
+                                    except:
+                                        pass
+                                
+                                if astrominer_procs:
+                                    print(f"[DEBUG] Found {len(astrominer_procs)} remaining astrominer processes, force killing...")
+                                    for proc in astrominer_procs:
+                                        try:
+                                            proc.kill()
+                                            print(f"[DEBUG] Force killed remaining astrominer PID {proc.pid}")
+                                        except:
+                                            pass
             
             miner['status'] = 'stopped'
             miner['process'] = None
@@ -781,9 +875,7 @@ class MiningManager:
                 if 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
                     if hash_rate:
-                        old_hash_rate = miner.get('hash_rate', 0)
                         miner['hash_rate'] = hash_rate
-                        print(f"[{name}] Hash rate updated: {old_hash_rate:.2f} -> {hash_rate:.2f} MH/s")
                 
                 # Print important mining output
                 if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'connected', 'difficulty', 'hashrate']):
@@ -807,11 +899,6 @@ class MiningManager:
     
     def _extract_hash_rate(self, line, mining_tool=''):
         """Extract hash rate from miner output based on mining tool"""
-        
-        # Debug: print the line being processed
-        if 'accepted:' in line.lower():
-            print(f"[DEBUG] Extracting from line: {line.strip()}")
-            print(f"[DEBUG] Mining tool: {mining_tool}")
         
         # Tool-specific patterns
         if mining_tool.lower() == 'ccminer':
@@ -855,9 +942,6 @@ class MiningManager:
                     value = float(match.group(1))
                     unit = match.group(2).lower() if len(match.groups()) > 1 else ''
                     
-                    print(f"[DEBUG] Pattern matched: {pattern}")
-                    print(f"[DEBUG] Extracted value: {value} {unit}")
-                    
                     # Convert to MH/s for display consistency
                     if 'k' in unit:
                         value = value / 1000  # kH/s to MH/s
@@ -870,13 +954,10 @@ class MiningManager:
                     else:
                         value = value / 1000000  # H/s to MH/s
                     
-                    print(f"[DEBUG] Final converted value: {value} MH/s")
                     return value
                 except Exception as e:
-                    print(f"[DEBUG] Error processing match: {e}")
                     continue
         
-        print(f"[DEBUG] No pattern matched for line: {line.strip()}")
         return None
 
 # Global mining manager instance
