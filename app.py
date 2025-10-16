@@ -446,10 +446,8 @@ class MiningManager:
                         try:
                             proc = psutil.Process(miner['pid'])
                             if proc.is_running():
-                                # Update hash rate from latest output
-                                hash_rate = self._extract_hash_rate(miner.get('latest_output', ''), miner.get('mining_tool', ''))
-                                if hash_rate is not None and hash_rate > 0:
-                                    miner['hash_rate'] = hash_rate
+                                # Don't override hash_rate here, let the _monitor_miner thread handle it
+                                # hash_rate is already being updated in real-time by _monitor_miner
                                 
                                 active_miners.append({
                                     'name': name,
@@ -490,29 +488,46 @@ class MiningManager:
         """Force kill process using system command as fallback"""
         try:
             import subprocess
+            import os
             
-            # Try multiple kill methods
-            commands = [
-                f"kill -INT {pid}",    # SIGINT first
-                f"kill -INT {pid}",    # SIGINT second time
-                f"kill -TERM {pid}",   # SIGTERM
-                f"kill -KILL {pid}"    # SIGKILL as last resort
-            ]
+            # Try multiple kill methods based on OS
+            if os.name == 'nt':  # Windows
+                commands = [
+                    f"taskkill /PID {pid} /T",           # Terminate process tree
+                    f"taskkill /PID {pid} /T /F",        # Force terminate process tree
+                    f"wmic process where processid={pid} delete",  # WMI delete
+                ]
+                check_cmd = f"tasklist /FI \"PID eq {pid}\""
+            else:  # Unix/Linux
+                commands = [
+                    f"kill -INT {pid}",    # SIGINT first
+                    f"kill -INT {pid}",    # SIGINT second time
+                    f"kill -TERM {pid}",   # SIGTERM
+                    f"kill -KILL {pid}"    # SIGKILL as last resort
+                ]
+                check_cmd = f"ps -p {pid}"
             
             for cmd in commands:
                 try:
                     print(f"[FORCE-KILL] Running: {cmd}")
-                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
-                    print(f"[FORCE-KILL] Result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+                    print(f"[FORCE-KILL] Result: {result.returncode}, stdout: {result.stdout.strip()}, stderr: {result.stderr.strip()}")
+                    
+                    # Wait a bit for process to die
+                    time.sleep(2)
                     
                     # Check if process still exists after each command
-                    check_result = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
-                    if check_result.returncode != 0:
-                        print(f"[FORCE-KILL] Tiến trình {pid} đã được kết thúc thành công với {cmd}")
-                        return True
-                        
-                    # Wait a bit before next command
-                    time.sleep(2)
+                    check_result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+                    if os.name == 'nt':
+                        # On Windows, if no output or error, process is gone
+                        if not check_result.stdout.strip() or "INFO: No tasks are running" in check_result.stdout:
+                            print(f"[FORCE-KILL] Tiến trình {pid} đã được kết thúc thành công với {cmd}")
+                            return True
+                    else:
+                        # On Unix, non-zero return code means process is gone
+                        if check_result.returncode != 0:
+                            print(f"[FORCE-KILL] Tiến trình {pid} đã được kết thúc thành công với {cmd}")
+                            return True
                     
                 except subprocess.TimeoutExpired:
                     print(f"[FORCE-KILL] Command timeout: {cmd}")
@@ -520,8 +535,13 @@ class MiningManager:
                     print(f"[FORCE-KILL] Lỗi khi chạy {cmd}: {e}")
             
             # Final check
-            final_check = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
-            if final_check.returncode != 0:
+            final_check = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+            if os.name == 'nt':
+                process_gone = not final_check.stdout.strip() or "INFO: No tasks are running" in final_check.stdout
+            else:
+                process_gone = final_check.returncode != 0
+                
+            if process_gone:
                 print(f"[FORCE-KILL] Process {pid} is gone")
                 return True
             else:
@@ -671,6 +691,13 @@ class MiningManager:
                         print(f"[DEBUG] Đã kết thúc thành công {miner['pid']} bằng lệnh hệ thống")
                     else:
                         print(f"[DEBUG] Không thể kết thúc {miner['pid']} ngay cả với lệnh hệ thống")
+                        
+                        # Last resort: kill by process name
+                        print(f"[DEBUG] Last resort: killing by process name...")
+                        mining_tool = miner.get('mining_tool', '')
+                        if mining_tool:
+                            kill_count = self.kill_all_miners_by_name([mining_tool])
+                            print(f"[DEBUG] Killed {kill_count} processes by name {mining_tool}")
             
             miner['status'] = 'stopped'
             miner['process'] = None
@@ -754,7 +781,9 @@ class MiningManager:
                 if 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
                     if hash_rate:
+                        old_hash_rate = miner.get('hash_rate', 0)
                         miner['hash_rate'] = hash_rate
+                        print(f"[{name}] Hash rate updated: {old_hash_rate:.2f} -> {hash_rate:.2f} MH/s")
                 
                 # Print important mining output
                 if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'connected', 'difficulty', 'hashrate']):
@@ -779,13 +808,18 @@ class MiningManager:
     def _extract_hash_rate(self, line, mining_tool=''):
         """Extract hash rate from miner output based on mining tool"""
         
+        # Debug: print the line being processed
+        if 'accepted:' in line.lower():
+            print(f"[DEBUG] Extracting from line: {line.strip()}")
+            print(f"[DEBUG] Mining tool: {mining_tool}")
+        
         # Tool-specific patterns
         if mining_tool.lower() == 'ccminer':
             # CCMiner patterns: 
-            # "accepted: 123/124 (diff 0.01), 4.95 kH/s yes!"
+            # "accepted: 7/7 (diff 436900.000), 2451.53 kH/s yes!"
             # "GPU #0: GeForce GTX 1080, 25.50 MH/s"
             patterns = [
-                r'accepted:\s*\d+\/\d+\s*\(diff\s*\d+\.\d+\),\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]\/s)\s*yes!',
+                r'accepted:\s*\d+\/\d+\s*\(diff\s*[\d\.]+\),\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]\/s)\s*yes!',
                 r'GPU #\d+:.*?(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
                 r'[Tt]otal:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
                 r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
@@ -821,6 +855,9 @@ class MiningManager:
                     value = float(match.group(1))
                     unit = match.group(2).lower() if len(match.groups()) > 1 else ''
                     
+                    print(f"[DEBUG] Pattern matched: {pattern}")
+                    print(f"[DEBUG] Extracted value: {value} {unit}")
+                    
                     # Convert to MH/s for display consistency
                     if 'k' in unit:
                         value = value / 1000  # kH/s to MH/s
@@ -833,10 +870,13 @@ class MiningManager:
                     else:
                         value = value / 1000000  # H/s to MH/s
                     
+                    print(f"[DEBUG] Final converted value: {value} MH/s")
                     return value
-                except:
+                except Exception as e:
+                    print(f"[DEBUG] Error processing match: {e}")
                     continue
         
+        print(f"[DEBUG] No pattern matched for line: {line.strip()}")
         return None
 
 # Global mining manager instance
@@ -881,8 +921,17 @@ def update_config():
                     print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
             
             if running_miners:
-                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 3 giây...")
-                time.sleep(3)
+                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 5 giây...")
+                time.sleep(5)
+                
+                # Force kill any remaining mining processes
+                print("[CẬP NHẬT] Đang kiểm tra và force kill các process mining còn lại...")
+                active_tools = mining_manager.get_active_tools()
+                if active_tools:
+                    print(f"[CẬP NHẬT] Tìm thấy các tool còn hoạt động: {active_tools}")
+                    kill_result = mining_manager.kill_all_miners_by_name(active_tools)
+                    print(f"[CẬP NHẬT] Kết quả force kill: {kill_result}")
+                    time.sleep(3)  # Additional wait after force kill
         
         results = []
         for miner_config in data:
@@ -964,6 +1013,63 @@ def stop_mining():
         else:
             return jsonify({'success': False, 'message': 'Yêu cầu trường "name" hoặc "names"'}), 400
             
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/force-stop-all', methods=['POST'])
+def force_stop_all():
+    """Force stop all mining processes - comprehensive cleanup"""
+    try:
+        print("[FORCE-STOP] Bắt đầu force stop tất cả mining processes...")
+        
+        # Step 1: Get all active tools
+        active_tools = mining_manager.get_active_mining_tools()
+        print(f"[FORCE-STOP] Active tools detected: {active_tools}")
+        
+        # Step 2: Try normal stop first
+        stopped_miners = []
+        for name, miner in mining_manager.miners.items():
+            if miner.get('status') == 'running':
+                print(f"[FORCE-STOP] Trying normal stop for {name}...")
+                stop_result = mining_manager.stop_miner(name)
+                stopped_miners.append({
+                    'name': name,
+                    'normal_stop_success': stop_result['success'],
+                    'message': stop_result['message']
+                })
+        
+        # Step 3: Wait a bit
+        time.sleep(3)
+        
+        # Step 4: Force kill all mining processes by name
+        print(f"[FORCE-STOP] Force killing all mining processes...")
+        common_mining_tools = ['ccminer', 'cpuminer', 'xmrig', 'astrominer', 't-rex', 'teamredminer', 'nbminer', 'gminer']
+        all_tools = list(set(active_tools + common_mining_tools))
+        
+        killed_count = mining_manager.kill_all_miners_by_name(all_tools)
+        print(f"[FORCE-STOP] Force killed {killed_count} processes")
+        
+        # Step 5: Reset all miner statuses
+        for miner_name in mining_manager.miners:
+            miner = mining_manager.miners[miner_name]
+            miner['status'] = 'stopped'
+            miner['process'] = None
+            miner['pid'] = None
+            miner['hash_rate'] = 0
+        
+        print("[FORCE-STOP] Đã reset tất cả miner status")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Force stopped all mining. Killed {killed_count} processes.',
+            'details': {
+                'stopped_miners': stopped_miners,
+                'killed_count': killed_count,
+                'target_tools': all_tools,
+                'active_tools_before': active_tools
+            }
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
