@@ -11,21 +11,48 @@ import re
 import requests
 import hashlib
 from urllib.parse import urlparse
+import logging
 
+# Import configuration
+import config
+
+# Configure Flask app
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+
+# Disable Flask access logs if configured
+if not config.ENABLE_FLASK_ACCESS_LOGS:
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)  # Only show errors, not requests
 
 class MiningManager:
     def __init__(self):
         self.miners = {}
         self.config_file = "mining_config.json"
-        self.base_download_url = "http://cdn.dndvina.com/minings/"
-        self.miners_dir = "miners"
-        self.auto_start_enabled = True  # Global auto-start setting
+        self.base_download_url = config.CDN_BASE_URL + "/"
+        self.miners_dir = config.MINERS_DIR
+        self.auto_start_enabled = config.AUTO_START_ON_BOOT
         self.load_config()
         
         # Ensure miners directory exists
         if not os.path.exists(self.miners_dir):
             os.makedirs(self.miners_dir)
+    
+    # ==================== Logging Helper Methods ====================
+    def log_info(self, message):
+        """Log application info if enabled"""
+        if config.ENABLE_APP_LOGS:
+            print(message)
+    
+    def log_monitor(self, message):
+        """Log monitor status if enabled"""
+        if config.ENABLE_MONITOR_LOGS:
+            print(message)
+    
+    def log_debug(self, message):
+        """Log debug info if enabled"""
+        if config.ENABLE_DEBUG_LOGS:
+            print(message)
         
     def load_config(self):
         """Load mining configuration from file"""
@@ -34,7 +61,7 @@ class MiningManager:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self.miners = json.load(f)
             except Exception as e:
-                print(f"Lỗi khi tải config: {e}")
+                self.log_info(f"Lỗi khi tải config: {e}")
                 self.miners = {}
         else:
             self.miners = {}
@@ -541,21 +568,21 @@ class MiningManager:
                             miner['status'] = 'stopped'
                             miner['pid'] = None
                             miner['hash_rate'] = 0
-                            print(f"[THEO DÕI] Không tìm thấy tiến trình miner {name}, reset trạng thái về stopped")
+                            self.log_monitor(f"[THEO DÕI] Không tìm thấy tiến trình miner {name}, reset trạng thái về stopped")
                 
                 # Print periodic status
                 if active_miners:
-                    print(f"\n[THEO DÕI] === Trạng thái Mining ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
+                    self.log_monitor(f"\n[THEO DÕI] === Trạng thái Mining ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
                     for miner in active_miners:
                         uptime_str = f"{int(miner['uptime']//3600)}h {int((miner['uptime']%3600)//60)}m"
                         hash_info = self._format_hash_rate(miner['hash_rate'])
-                        print(f"[THEO DÕI] {miner['name']}: {miner['coin']} | {miner['tool']} | {hash_info['value']:.2f} {hash_info['unit']} | PID:{miner['pid']} | Thời gian:{uptime_str}")
-                    print(f"[THEO DÕI] =====================================\n")
+                        self.log_monitor(f"[THEO DÕI] {miner['name']}: {miner['coin']} | {miner['tool']} | {hash_info['value']:.2f} {hash_info['unit']} | PID:{miner['pid']} | Thời gian:{uptime_str}")
+                    self.log_monitor(f"[THEO DÕI] =====================================\n")
                 else:
-                    print(f"[THEO DÕI] Không có miner nào đang hoạt động lúc {time.strftime('%H:%M:%S')}")
+                    self.log_monitor(f"[THEO DÕI] Không có miner nào đang hoạt động lúc {time.strftime('%H:%M:%S')}")
                     
             except Exception as e:
-                print(f"[THEO DÕI] Lỗi trong monitor_miners: {e}")
+                self.log_info(f"[THEO DÕI] Lỗi trong monitor_miners: {e}")
                 time.sleep(10)
 
     def force_kill_process_by_pid(self, pid):
@@ -1412,21 +1439,30 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    print("Đang khởi động Server Quản lý Mining...")
+    print("=" * 60)
+    print("🚀 Mining Management API Server")
+    print("=" * 60)
+    print(f"📡 Server URL: http://{config.SERVER_HOST}:{config.SERVER_PORT}")
+    print(f"📊 Monitor Logs: {'Enabled' if config.ENABLE_MONITOR_LOGS else 'Disabled'}")
+    print(f"🔍 Flask Logs: {'Enabled' if config.ENABLE_FLASK_ACCESS_LOGS else 'Disabled'}")
+    print(f"🎯 Auto-Start: {'Enabled' if config.AUTO_START_ON_BOOT else 'Disabled'}")
+    print("=" * 60)
     
     # Start auto-start in a separate thread after a delay
     def delayed_auto_start():
         time.sleep(5)  # Wait 5 seconds for server to fully start
-        print("\n🚀 Checking for auto-start miners...")
-        try:
-            mining_manager.auto_start_miners()
-        except Exception as e:
-            print(f"Lỗi trong auto-start: {e}")
+        if config.AUTO_START_ON_BOOT:
+            print("\n🚀 Checking for auto-start miners...")
+            try:
+                mining_manager.auto_start_miners()
+            except Exception as e:
+                print(f"Lỗi trong auto-start: {e}")
     
     # Start monitoring thread
     def start_monitoring():
         time.sleep(10)  # Wait 10 seconds before starting monitoring
-        print("\n📊 Đang khởi động bộ giám sát mining...")
+        if config.ENABLE_MONITOR_LOGS:
+            print("\n📊 Đang khởi động bộ giám sát mining...")
         mining_manager.monitor_miners()
     
     auto_start_thread = threading.Thread(target=delayed_auto_start)
@@ -1438,7 +1474,11 @@ if __name__ == '__main__':
     monitor_thread.start()
     
     try:
-        app.run(host='0.0.0.0', port=9098, debug=False)
+        app.run(
+            host=config.SERVER_HOST, 
+            port=config.SERVER_PORT, 
+            debug=config.DEBUG_MODE
+        )
     except Exception as e:
         print(f"❌ Server không thể khởi động: {e}")
         sys.exit(1)
