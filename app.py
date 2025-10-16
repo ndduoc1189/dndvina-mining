@@ -274,7 +274,8 @@ class MiningManager:
             miner['process'] = process
             miner['pid'] = process.pid
             miner['status'] = 'running'
-            miner['start_time'] = datetime.now().isoformat()
+            miner['start_time'] = time.time()  # Use timestamp for uptime calculation
+            miner['latest_output'] = ''
             
             # Start monitoring thread
             thread = threading.Thread(target=self._monitor_miner, args=(name,))
@@ -295,18 +296,18 @@ class MiningManager:
             for miner in self.miners.values():
                 mining_tool = miner.get('mining_tool', '')
                 if mining_tool:
-                    # Add both with and without .exe extension for cross-platform
+                    # Only add the mining tool name (no .exe extension)
                     process_names.add(mining_tool)
-                    process_names.add(f"{mining_tool}.exe")
             
             # If no miners configured, use common mining tools as fallback
             if not process_names:
-                process_names = {'ccminer', 'ccminer.exe', 'cpuminer', 'cpuminer.exe', 
-                               'xmrig', 'xmrig.exe', 't-rex', 't-rex.exe', 
-                               'miner', 'miner.exe', 'PhoenixMiner', 'PhoenixMiner.exe'}
+                process_names = {'ccminer', 'cpuminer', 'xmrig', 't-rex', 'miner', 'PhoenixMiner'}
         
         killed_count = 0
+        found_processes = []
+        
         try:
+            # Step 1: Find all matching processes
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     proc_name = proc.info['name'].lower()
@@ -314,28 +315,75 @@ class MiningManager:
                     # Check if process name matches any mining process
                     for mining_name in process_names:
                         if mining_name.lower() in proc_name or proc_name == mining_name.lower():
-                            print(f"Found mining process: {proc.info['name']} (PID: {proc.info['pid']})")
-                            
-                            # Get children and kill them too
-                            children = proc.children(recursive=True)
-                            for child in children:
-                                try:
-                                    child.kill()
-                                    killed_count += 1
-                                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                                    pass
-                            
-                            # Kill main process
-                            proc.kill()
-                            killed_count += 1
+                            print(f"[KILL-ALL] Found mining process: {proc.info['name']} (PID: {proc.info['pid']})")
+                            found_processes.append(proc)
                             break
                             
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     pass
+            
+            if not found_processes:
+                print("[KILL-ALL] No mining processes found")
+                return 0
+            
+            # Step 2: Send SIGINT (Ctrl+C) to all processes first
+            import signal
+            print(f"[KILL-ALL] Sending SIGINT to {len(found_processes)} mining processes...")
+            still_alive = []
+            
+            for proc in found_processes:
+                try:
+                    proc.send_signal(signal.SIGINT)
+                    print(f"[KILL-ALL] Sent SIGINT to {proc.name()} (PID: {proc.pid})")
+                    
+                    # Also send to children
+                    children = proc.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.send_signal(signal.SIGINT)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                    
+                    still_alive.extend([proc] + children)
+                    
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    print(f"[KILL-ALL] Failed to send SIGINT to {proc.pid}: {e}")
+            
+            # Step 3: Wait for graceful shutdown
+            if still_alive:
+                print(f"[KILL-ALL] Waiting for graceful shutdown...")
+                gone, still_alive = psutil.wait_procs(still_alive, timeout=8)
+                print(f"[KILL-ALL] After SIGINT: {len(gone)} stopped, {len(still_alive)} still alive")
+                killed_count += len(gone)
+            
+            # Step 4: SIGTERM for remaining processes
+            if still_alive:
+                print(f"[KILL-ALL] Sending SIGTERM to {len(still_alive)} remaining processes...")
+                for proc in still_alive:
+                    try:
+                        proc.terminate()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                
+                # Wait after SIGTERM
+                gone, still_alive = psutil.wait_procs(still_alive, timeout=5)
+                print(f"[KILL-ALL] After SIGTERM: {len(gone)} stopped, {len(still_alive)} still alive")
+                killed_count += len(gone)
+            
+            # Step 5: Force kill remaining processes
+            if still_alive:
+                print(f"[KILL-ALL] Force killing {len(still_alive)} remaining processes...")
+                for proc in still_alive:
+                    try:
+                        proc.kill()
+                        killed_count += 1
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
                     
         except Exception as e:
-            print(f"Error in kill_all_miners_by_name: {e}")
+            print(f"[KILL-ALL] Error in kill_all_miners_by_name: {e}")
         
+        print(f"[KILL-ALL] Total processes handled: {killed_count}")
         return killed_count
 
     def get_active_mining_tools(self):
@@ -346,6 +394,58 @@ class MiningManager:
             if mining_tool and miner.get('status') == 'running':
                 tools.add(mining_tool)
         return list(tools)
+
+    def monitor_miners(self):
+        """Monitor mining processes and output status periodically"""
+        while True:
+            try:
+                time.sleep(30)  # Check every 30 seconds
+                
+                active_miners = []
+                for name, miner in self.miners.items():
+                    if miner['status'] == 'running' and miner['pid']:
+                        try:
+                            proc = psutil.Process(miner['pid'])
+                            if proc.is_running():
+                                # Update hash rate from latest output
+                                hash_rate = self.extract_hash_rate(miner.get('latest_output', ''), miner.get('mining_tool', ''))
+                                if hash_rate > 0:
+                                    miner['hash_rate'] = hash_rate
+                                
+                                active_miners.append({
+                                    'name': name,
+                                    'coin': miner.get('coin_name', ''),
+                                    'tool': miner.get('mining_tool', ''),
+                                    'hash_rate': miner.get('hash_rate', 0),
+                                    'pid': miner['pid'],
+                                    'uptime': time.time() - miner.get('start_time', time.time())
+                                })
+                            else:
+                                # Process died, update status
+                                miner['status'] = 'stopped'
+                                miner['pid'] = None
+                                miner['hash_rate'] = 0
+                                print(f"[MONITOR] Miner {name} process died, status reset to stopped")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            # Process no longer exists
+                            miner['status'] = 'stopped'
+                            miner['pid'] = None
+                            miner['hash_rate'] = 0
+                            print(f"[MONITOR] Miner {name} process not found, status reset to stopped")
+                
+                # Print periodic status
+                if active_miners:
+                    print(f"\n[MONITOR] === Mining Status ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
+                    for miner in active_miners:
+                        uptime_str = f"{int(miner['uptime']//3600)}h {int((miner['uptime']%3600)//60)}m"
+                        print(f"[MONITOR] {miner['name']}: {miner['coin']} | {miner['tool']} | {miner['hash_rate']:.2f} MH/s | PID:{miner['pid']} | Up:{uptime_str}")
+                    print(f"[MONITOR] =====================================\n")
+                else:
+                    print(f"[MONITOR] No active miners at {time.strftime('%H:%M:%S')}")
+                    
+            except Exception as e:
+                print(f"[MONITOR] Error in monitor_miners: {e}")
+                time.sleep(10)
 
     def stop_miner(self, name):
         """Stop a mining process"""
@@ -362,52 +462,108 @@ class MiningManager:
                 # Try to terminate gracefully first
                 try:
                     parent = psutil.Process(miner['pid'])
-                    print(f"Stopping miner {name} (PID: {miner['pid']})")
+                    print(f"[DEBUG] Stopping miner {name} (PID: {miner['pid']})")
+                    print(f"[DEBUG] Process name: {parent.name()}")
+                    print(f"[DEBUG] Process status: {parent.status()}")
+                    print(f"[DEBUG] Process cmdline: {parent.cmdline()}")
                     
                     # Get all children processes (recursive)
                     children = parent.children(recursive=True)
-                    print(f"Found {len(children)} child processes")
+                    print(f"[DEBUG] Found {len(children)} child processes")
                     
-                    # Step 1: Terminate all children first
-                    for child in children:
-                        try:
-                            print(f"Terminating child process {child.pid}")
-                            child.terminate()
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
+                    # Step 1: Send SIGINT (Ctrl+C) to simulate graceful shutdown
+                    print(f"[DEBUG] Sending SIGINT (Ctrl+C) to mining process...")
+                    try:
+                        import signal
+                        parent.send_signal(signal.SIGINT)
+                        for child in children:
+                            try:
+                                child.send_signal(signal.SIGINT)
+                                print(f"[DEBUG] Sent SIGINT to child process {child.pid}")
+                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                print(f"[DEBUG] Failed to send SIGINT to child {child.pid}: {e}")
+                        
+                        # Wait for graceful shutdown after SIGINT
+                        print(f"[DEBUG] Waiting for graceful shutdown after SIGINT...")
+                        gone, still_alive = psutil.wait_procs(children + [parent], timeout=10)
+                        print(f"[DEBUG] After SIGINT: {len(gone)} processes stopped, {len(still_alive)} still alive")
+                        
+                        # If all processes stopped gracefully, we're done
+                        if not still_alive:
+                            print(f"[DEBUG] All processes stopped gracefully with SIGINT")
+                            miner['status'] = 'stopped'
+                            miner['process'] = None
+                            miner['pid'] = None
+                            miner['hash_rate'] = 0
+                            print(f"[DEBUG] Miner {name} status reset to stopped")
+                            return {'success': True, 'message': f'Miner {name} stopped gracefully'}
+                        
+                        # If some processes still alive, continue with SIGTERM
+                        children = still_alive
+                        parent = None
+                        for proc in still_alive:
+                            if proc.pid == miner['pid']:
+                                parent = proc
+                                children = [p for p in still_alive if p.pid != miner['pid']]
+                                break
+                        
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to send SIGINT: {e}, falling back to SIGTERM")
                     
-                    # Step 2: Terminate parent
-                    parent.terminate()
-                    
-                    # Step 3: Wait for graceful shutdown
-                    gone, still_alive = psutil.wait_procs(children + [parent], timeout=3)
-                    print(f"Gracefully stopped {len(gone)} processes")
-                    
-                    # Step 4: Force kill any remaining processes
-                    for proc in still_alive:
-                        try:
-                            print(f"Force killing process {proc.pid}")
-                            proc.kill()
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
-                    
-                    # Step 5: Final wait to ensure all are dead
+                    # Step 2: If SIGINT didn't work, use SIGTERM on remaining processes
                     if still_alive:
-                        psutil.wait_procs(still_alive, timeout=2)
+                        print(f"[DEBUG] Sending SIGTERM to {len(still_alive)} remaining processes...")
+                        for child in children:
+                            try:
+                                print(f"[DEBUG] Terminating child process {child.pid} ({child.name()})")
+                                child.terminate()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                print(f"[DEBUG] Failed to terminate child {child.pid}: {e}")
+                        
+                        # Terminate parent if still exists
+                        if parent:
+                            print(f"[DEBUG] Terminating parent process {parent.pid}")
+                            parent.terminate()
+                        
+                        # Step 3: Wait for graceful shutdown after SIGTERM
+                        print(f"[DEBUG] Waiting for graceful shutdown after SIGTERM...")
+                        gone, still_alive = psutil.wait_procs(still_alive, timeout=5)
+                        print(f"[DEBUG] After SIGTERM: {len(gone)} processes stopped, {len(still_alive)} still alive")
+                    
+                    # Step 4: Force kill any remaining processes with SIGKILL
+                    if still_alive:
+                        print(f"[DEBUG] Force killing {len(still_alive)} remaining processes...")
+                        for proc in still_alive:
+                            try:
+                                print(f"[DEBUG] Force killing process {proc.pid} ({proc.name()})")
+                                proc.kill()
+                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                print(f"[DEBUG] Failed to force kill {proc.pid}: {e}")
+                        
+                        # Step 5: Final wait to ensure all are dead
+                        if still_alive:
+                            print(f"[DEBUG] Final wait for {len(still_alive)} processes...")
+                            psutil.wait_procs(still_alive, timeout=2)
                         
                 except psutil.NoSuchProcess:
-                    print(f"Process {miner['pid']} already terminated")
+                    print(f"[DEBUG] Process {miner['pid']} already terminated")
                 except Exception as e:
-                    print(f"Error stopping process: {e}")
+                    print(f"[DEBUG] Error stopping process {miner['pid']}: {type(e).__name__}: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             miner['status'] = 'stopped'
             miner['process'] = None
             miner['pid'] = None
             miner['hash_rate'] = 0
             
+            print(f"[DEBUG] Miner {name} status reset to stopped")
             return {'success': True, 'message': f'Miner {name} stopped'}
             
         except Exception as e:
+            print(f"[DEBUG] Failed to stop miner {name}: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return {'success': False, 'message': f'Failed to stop miner {name}: {str(e)}'}
     
     def get_miner_status(self, name):
@@ -463,16 +619,25 @@ class MiningManager:
                 if not line:
                     break
                 
-                miner['last_output'] += line
+                # Store latest output for monitoring
+                if 'latest_output' not in miner:
+                    miner['latest_output'] = ''
+                miner['latest_output'] += line
                 
                 # Keep only last 5000 characters to prevent memory issues
-                if len(miner['last_output']) > 5000:
-                    miner['last_output'] = miner['last_output'][-5000:]
+                if len(miner['latest_output']) > 5000:
+                    miner['latest_output'] = miner['latest_output'][-5000:]
                 
                 # Extract hash rate from output (tool-specific patterns)
-                hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
+                hash_rate = self.extract_hash_rate(line, miner.get('mining_tool', ''))
                 if hash_rate:
                     miner['hash_rate'] = hash_rate
+                    print(f"[HASH] {name}: {hash_rate:.2f} MH/s")
+                
+                # Print important mining output
+                line_lower = line.lower()
+                if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'mh/s', 'h/s', 'connected', 'difficulty']):
+                    print(f"[{name}] {line.strip()}")
                 
                 # Check if process is still running
                 if process.poll() is not None:
@@ -483,9 +648,11 @@ class MiningManager:
             miner['process'] = None
             miner['pid'] = None
             miner['hash_rate'] = 0
+            print(f"[{name}] Mining process ended")
             
         except Exception as e:
-            print(f"Error monitoring miner {name}: {e}")
+            print(f"[ERROR] Error monitoring miner {name}: {e}")
+            miner['status'] = 'error'
             miner['status'] = 'error'
     
     def _extract_hash_rate(self, line, mining_tool=''):
@@ -865,11 +1032,21 @@ if __name__ == '__main__':
         try:
             mining_manager.auto_start_miners()
         except Exception as e:
-            print(f"❌ Auto-start failed: {e}")
+            print(f"Error in auto-start: {e}")
+    
+    # Start monitoring thread
+    def start_monitoring():
+        time.sleep(10)  # Wait 10 seconds before starting monitoring
+        print("\n📊 Starting mining monitor...")
+        mining_manager.monitor_miners()
     
     auto_start_thread = threading.Thread(target=delayed_auto_start)
     auto_start_thread.daemon = True
     auto_start_thread.start()
+    
+    monitor_thread = threading.Thread(target=start_monitoring)
+    monitor_thread.daemon = True
+    monitor_thread.start()
     
     try:
         app.run(host='0.0.0.0', port=5000, debug=False)

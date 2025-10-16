@@ -132,12 +132,17 @@ Hoặc dừng nhiều miners:
 {"process_names": ["ccminer", "t-rex", "xmrig"]}  // optional
 ```
 
-**Cách hoạt động:**
-- **Auto-detect**: Nếu không có `process_names`, sẽ tự động lấy mining tools từ miners đã config (ccminer, t-rex, xmrig, etc.)
-- **Cross-platform**: Tìm cả `.exe` và non-`.exe` versions
-- **Process scanning**: Scan tất cả running processes để tìm matching names
-- **Force kill**: Kill parent process và tất cả children
-- **Reset status**: Set tất cả miners về "stopped"
+**Graceful Shutdown Strategy:**
+1. **SIGINT (Ctrl+C)**: Gửi signal interrupt để mining tool tự dừng gracefully
+2. **Wait 8 seconds**: Chờ mining tool cleanup và save data
+3. **SIGTERM**: Nếu vẫn chạy, gửi termination signal
+4. **Wait 5 seconds**: Chờ process terminate
+5. **SIGKILL**: Force kill nếu vẫn còn sống
+
+**Process Detection:**
+- **Auto-detect**: Nếu không có `process_names`, sẽ tự động lấy mining tools từ miners đã config
+- **Recursive children**: Tìm và xử lý tất cả child processes
+- **Cross-platform**: Support Linux signals (SIGINT, SIGTERM, SIGKILL)
 
 **Response:**
 ```json
@@ -146,7 +151,7 @@ Hoặc dừng nhiều miners:
   "message": "Force killed 3 mining processes", 
   "killed_count": 3,
   "active_tools_before_kill": ["ccminer", "t-rex"],
-  "target_process_names": ["ccminer", "ccminer.exe", "t-rex", "t-rex.exe"]
+  "target_process_names": ["ccminer", "t-rex"]
 }
 ```
 
