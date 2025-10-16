@@ -408,7 +408,7 @@ class MiningManager:
                             proc = psutil.Process(miner['pid'])
                             if proc.is_running():
                                 # Update hash rate from latest output
-                                hash_rate = self.extract_hash_rate(miner.get('latest_output', ''), miner.get('mining_tool', ''))
+                                hash_rate = self._extract_hash_rate(miner.get('latest_output', ''), miner.get('mining_tool', ''))
                                 if hash_rate > 0:
                                     miner['hash_rate'] = hash_rate
                                 
@@ -629,7 +629,7 @@ class MiningManager:
                     miner['latest_output'] = miner['latest_output'][-5000:]
                 
                 # Extract hash rate from output (tool-specific patterns)
-                hash_rate = self.extract_hash_rate(line, miner.get('mining_tool', ''))
+                hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
                 if hash_rate:
                     miner['hash_rate'] = hash_rate
                     print(f"[HASH] {name}: {hash_rate:.2f} MH/s")
