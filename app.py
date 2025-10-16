@@ -918,13 +918,17 @@ class MiningManager:
                 if tool_name == 'astrominer':
                     if 'hashrate' in line_lower:
                         # Debug: show raw line to check for ANSI codes
-                        if line_count <= 5:  # Debug first 5 hashrate lines
-                            print(f"[{name}] [DEBUG-HASH] Raw: {repr(line.strip())}")
+                        print(f"[{name}] [DEBUG-HASH] Raw: {repr(line.strip())}")
                         hash_rate = self._extract_hash_rate(line, tool_name)
                         if hash_rate:
                             miner['hash_rate'] = hash_rate
-                            if line_count <= 5:
-                                print(f"[{name}] [DEBUG-HASH] Extracted: {hash_rate} MH/s")
+                            print(f"[{name}] [DEBUG-HASH] Extracted: {hash_rate} MH/s")
+                        else:
+                            print(f"[{name}] [DEBUG-HASH] Failed to extract hash rate from line")
+                    # Debug: check why hashrate not in line
+                    elif 'accepted' in line_lower and line_count <= 30:
+                        print(f"[{name}] [DEBUG] Line has 'accepted' but not 'hashrate': {line.strip()[:100]}")
+                        print(f"[{name}] [DEBUG] line_lower contains: {'hashrate' if 'hashrate' in line_lower else 'NO HASHRATE'}")
                 # CCMiner/XMRig: extract only from accepted lines
                 elif 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, tool_name)
