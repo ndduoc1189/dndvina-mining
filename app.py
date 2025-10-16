@@ -830,7 +830,7 @@ class MiningManager:
             'status': miner['status'],
             'pid': miner['pid'],
             'start_time': miner['start_time'],
-            'hash_rate': miner['hash_rate'],
+            'hash_rate': miner['hash_rate'] * 1000000,  # Convert MH/s to H/s for client
             'coin_name': miner.get('coin_name', ''),
             'mining_tool': miner.get('mining_tool', ''),
             'auto_start': miner.get('auto_start', False),
@@ -1002,12 +1002,12 @@ def update_config():
                     print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
             
             if running_miners:
-                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 5 giây...")
-                time.sleep(5)
+                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 2 giây...")
+                time.sleep(2)
                 
                 # Force kill any remaining mining processes
                 print("[CẬP NHẬT] Đang kiểm tra và force kill các process mining còn lại...")
-                active_tools = mining_manager.get_active_tools()
+                active_tools = mining_manager.get_active_mining_tools()
                 if active_tools:
                     print(f"[CẬP NHẬT] Tìm thấy các tool còn hoạt động: {active_tools}")
                     kill_result = mining_manager.kill_all_miners_by_name(active_tools)
