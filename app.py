@@ -698,14 +698,15 @@ class MiningManager:
                     miner['latest_output'] = miner['latest_output'][-5000:]
                 
                 # Extract hash rate from output (tool-specific patterns)
-                hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
-                if hash_rate:
-                    miner['hash_rate'] = hash_rate
-                    print(f"[HASH] {name}: {hash_rate:.2f} MH/s")
+                # Only extract from accepted lines to avoid noise
+                line_lower = line.lower()
+                if 'accepted:' in line_lower:
+                    hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
+                    if hash_rate:
+                        miner['hash_rate'] = hash_rate
                 
                 # Print important mining output
-                line_lower = line.lower()
-                if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'mh/s', 'h/s', 'connected', 'difficulty']):
+                if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'connected', 'difficulty']):
                     print(f"[{name}] {line.strip()}")
                 
                 # Check if process is still running
