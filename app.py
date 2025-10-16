@@ -435,6 +435,52 @@ class MiningManager:
                 print(f"[MONITOR] Error in monitor_miners: {e}")
                 time.sleep(10)
 
+    def force_kill_process_by_pid(self, pid):
+        """Force kill process using system command as fallback"""
+        try:
+            import subprocess
+            
+            # Try multiple kill methods
+            commands = [
+                f"kill -INT {pid}",    # SIGINT first
+                f"kill -INT {pid}",    # SIGINT second time
+                f"kill -TERM {pid}",   # SIGTERM
+                f"kill -KILL {pid}"    # SIGKILL as last resort
+            ]
+            
+            for cmd in commands:
+                try:
+                    print(f"[FORCE-KILL] Running: {cmd}")
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+                    print(f"[FORCE-KILL] Result: {result.returncode}, stdout: {result.stdout}, stderr: {result.stderr}")
+                    
+                    # Check if process still exists after each command
+                    check_result = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
+                    if check_result.returncode != 0:
+                        print(f"[FORCE-KILL] Process {pid} successfully killed with {cmd}")
+                        return True
+                        
+                    # Wait a bit before next command
+                    time.sleep(2)
+                    
+                except subprocess.TimeoutExpired:
+                    print(f"[FORCE-KILL] Command timeout: {cmd}")
+                except Exception as e:
+                    print(f"[FORCE-KILL] Error running {cmd}: {e}")
+            
+            # Final check
+            final_check = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
+            if final_check.returncode != 0:
+                print(f"[FORCE-KILL] Process {pid} is gone")
+                return True
+            else:
+                print(f"[FORCE-KILL] Process {pid} still exists")
+                return False
+                
+        except Exception as e:
+            print(f"[FORCE-KILL] Exception in force_kill_process_by_pid: {e}")
+            return False
+
     def stop_miner(self, name):
         """Stop a mining process"""
         if name not in self.miners:
@@ -455,25 +501,52 @@ class MiningManager:
                     print(f"[DEBUG] Process status: {parent.status()}")
                     print(f"[DEBUG] Process cmdline: {parent.cmdline()}")
                     
-                    # Get all children processes (recursive)
-                    children = parent.children(recursive=True)
-                    print(f"[DEBUG] Found {len(children)} child processes")
-                    
-                    # Step 1: Send SIGINT (Ctrl+C) to simulate graceful shutdown
-                    print(f"[DEBUG] Sending SIGINT (Ctrl+C) to mining process...")
+                    # Handle permission issues - try to get children but don't fail if can't
+                    children = []
                     try:
-                        import signal
-                        parent.send_signal(signal.SIGINT)
-                        for child in children:
-                            try:
-                                child.send_signal(signal.SIGINT)
-                                print(f"[DEBUG] Sent SIGINT to child process {child.pid}")
-                            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                print(f"[DEBUG] Failed to send SIGINT to child {child.pid}: {e}")
-                        
-                        # Wait for graceful shutdown after SIGINT
-                        print(f"[DEBUG] Waiting for graceful shutdown after SIGINT...")
-                        gone, still_alive = psutil.wait_procs(children + [parent], timeout=10)
+                        children = parent.children(recursive=True)
+                        print(f"[DEBUG] Found {len(children)} child processes")
+                    except (psutil.AccessDenied, PermissionError) as e:
+                        print(f"[DEBUG] Cannot access children due to permission: {e}")
+                        # Try to find children by scanning all processes
+                        try:
+                            for proc in psutil.process_iter(['pid', 'ppid']):
+                                if proc.info['ppid'] == miner['pid']:
+                                    children.append(psutil.Process(proc.info['pid']))
+                            print(f"[DEBUG] Found {len(children)} children via process scan")
+                        except Exception as scan_e:
+                            print(f"[DEBUG] Process scan also failed: {scan_e}")
+                    
+                    # Step 1: Send SIGINT (Ctrl+C) multiple times to simulate graceful shutdown
+                    print(f"[DEBUG] Sending SIGINT (Ctrl+C) to mining process...")
+                    import signal
+                    
+                    # Send SIGINT twice for better reliability
+                    for attempt in range(2):
+                        try:
+                            parent.send_signal(signal.SIGINT)
+                            print(f"[DEBUG] Sent SIGINT attempt {attempt + 1} to parent {parent.pid}")
+                            
+                            for child in children:
+                                try:
+                                    child.send_signal(signal.SIGINT)
+                                    print(f"[DEBUG] Sent SIGINT attempt {attempt + 1} to child {child.pid}")
+                                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                                    print(f"[DEBUG] Failed to send SIGINT to child {child.pid}: {e}")
+                            
+                            # Small delay between attempts
+                            if attempt == 0:
+                                time.sleep(2)
+                                
+                        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                            print(f"[DEBUG] Failed to send SIGINT attempt {attempt + 1}: {e}")
+                    
+                    # Wait for graceful shutdown after SIGINT
+                    print(f"[DEBUG] Waiting for graceful shutdown after SIGINT...")
+                    all_processes = [parent] + children
+                    
+                    try:
+                        gone, still_alive = psutil.wait_procs(all_processes, timeout=12)
                         print(f"[DEBUG] After SIGINT: {len(gone)} processes stopped, {len(still_alive)} still alive")
                         
                         # If all processes stopped gracefully, we're done
@@ -486,52 +559,53 @@ class MiningManager:
                             print(f"[DEBUG] Miner {name} status reset to stopped")
                             return {'success': True, 'message': f'Miner {name} stopped gracefully'}
                         
-                        # If some processes still alive, continue with SIGTERM
-                        children = still_alive
+                        # Update lists for next steps
+                        children = [p for p in still_alive if p.pid != miner['pid']]
                         parent = None
                         for proc in still_alive:
                             if proc.pid == miner['pid']:
                                 parent = proc
-                                children = [p for p in still_alive if p.pid != miner['pid']]
                                 break
-                        
-                    except Exception as e:
-                        print(f"[DEBUG] Failed to send SIGINT: {e}, falling back to SIGTERM")
+                                
+                    except Exception as wait_e:
+                        print(f"[DEBUG] Error waiting for processes: {wait_e}")
+                        # Assume they are still alive
+                        still_alive = all_processes
                     
                     # Step 2: If SIGINT didn't work, use SIGTERM on remaining processes
                     if still_alive:
                         print(f"[DEBUG] Sending SIGTERM to {len(still_alive)} remaining processes...")
-                        for child in children:
+                        for proc in still_alive:
                             try:
-                                print(f"[DEBUG] Terminating child process {child.pid} ({child.name()})")
-                                child.terminate()
+                                print(f"[DEBUG] Terminating process {proc.pid} ({proc.name() if hasattr(proc, 'name') else 'unknown'})")
+                                proc.terminate()
                             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                print(f"[DEBUG] Failed to terminate child {child.pid}: {e}")
-                        
-                        # Terminate parent if still exists
-                        if parent:
-                            print(f"[DEBUG] Terminating parent process {parent.pid}")
-                            parent.terminate()
+                                print(f"[DEBUG] Failed to terminate {proc.pid}: {e}")
                         
                         # Step 3: Wait for graceful shutdown after SIGTERM
                         print(f"[DEBUG] Waiting for graceful shutdown after SIGTERM...")
-                        gone, still_alive = psutil.wait_procs(still_alive, timeout=5)
-                        print(f"[DEBUG] After SIGTERM: {len(gone)} processes stopped, {len(still_alive)} still alive")
+                        try:
+                            gone, still_alive = psutil.wait_procs(still_alive, timeout=6)
+                            print(f"[DEBUG] After SIGTERM: {len(gone)} processes stopped, {len(still_alive)} still alive")
+                        except Exception as wait_e:
+                            print(f"[DEBUG] Error waiting after SIGTERM: {wait_e}")
                     
                     # Step 4: Force kill any remaining processes with SIGKILL
                     if still_alive:
                         print(f"[DEBUG] Force killing {len(still_alive)} remaining processes...")
                         for proc in still_alive:
                             try:
-                                print(f"[DEBUG] Force killing process {proc.pid} ({proc.name()})")
+                                print(f"[DEBUG] Force killing process {proc.pid}")
                                 proc.kill()
                             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                                 print(f"[DEBUG] Failed to force kill {proc.pid}: {e}")
                         
                         # Step 5: Final wait to ensure all are dead
-                        if still_alive:
+                        try:
                             print(f"[DEBUG] Final wait for {len(still_alive)} processes...")
-                            psutil.wait_procs(still_alive, timeout=2)
+                            psutil.wait_procs(still_alive, timeout=3)
+                        except Exception as wait_e:
+                            print(f"[DEBUG] Final wait error: {wait_e}")
                         
                 except psutil.NoSuchProcess:
                     print(f"[DEBUG] Process {miner['pid']} already terminated")
@@ -539,6 +613,13 @@ class MiningManager:
                     print(f"[DEBUG] Error stopping process {miner['pid']}: {type(e).__name__}: {e}")
                     import traceback
                     traceback.print_exc()
+                    
+                    # Try fallback kill using system commands
+                    print(f"[DEBUG] Trying fallback system kill for PID {miner['pid']}")
+                    if self.force_kill_process_by_pid(miner['pid']):
+                        print(f"[DEBUG] Successfully killed {miner['pid']} using system commands")
+                    else:
+                        print(f"[DEBUG] Failed to kill {miner['pid']} even with system commands")
             
             miner['status'] = 'stopped'
             miner['process'] = None
