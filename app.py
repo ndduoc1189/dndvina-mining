@@ -316,6 +316,37 @@ class MiningManager:
             miner['start_time'] = time.time()  # Use timestamp for uptime calculation
             miner['latest_output'] = ''
             
+            # Debug: Check if process is actually running
+            time.sleep(0.5)  # Wait a bit for process to start
+            if process.poll() is not None:
+                print(f"[LỖI] Process {name} died immediately after start! Return code: {process.returncode}")
+                # Try to read any error output
+                try:
+                    error_output = process.stdout.read()
+                    if error_output:
+                        print(f"[LỖI] Error output: {error_output}")
+                except:
+                    pass
+                return {'success': False, 'message': f'Process died immediately with code {process.returncode}'}
+            
+            print(f"[DEBUG] Process {name} started successfully with PID {process.pid}")
+            
+            # Special check for astrominer - verify it's actually running
+            if miner.get('mining_tool', '').lower() == 'astrominer':
+                time.sleep(2)  # Wait a bit more for astrominer to initialize
+                try:
+                    proc = psutil.Process(process.pid)
+                    children = proc.children(recursive=True)
+                    print(f"[DEBUG] Astrominer process tree:")
+                    print(f"[DEBUG]   Parent PID {process.pid}: {proc.name()} - Status: {proc.status()}")
+                    for child in children:
+                        try:
+                            print(f"[DEBUG]   Child PID {child.pid}: {child.name()} - Status: {child.status()}")
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"[DEBUG] Error checking astrominer process: {e}")
+            
             # Start monitoring thread
             thread = threading.Thread(target=self._monitor_miner, args=(name,))
             thread.daemon = True
@@ -856,9 +887,18 @@ class MiningManager:
             return
         
         try:
+            mining_tool = miner.get('mining_tool', '').lower()
+            line_count = 0
+            
             for line in iter(process.stdout.readline, ''):
                 if not line:
                     break
+                
+                line_count += 1
+                
+                # Debug: Print first 10 lines for astrominer to see what's happening
+                if mining_tool == 'astrominer' and line_count <= 10:
+                    print(f"[{name}] [DEBUG-LINE-{line_count}] {line.strip()}")
                 
                 # Store latest output for monitoring
                 if 'latest_output' not in miner:
@@ -1253,6 +1293,27 @@ def health_check():
         'message': 'Mining manager is running',
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/api/debug/output/<miner_name>', methods=['GET'])
+def get_miner_output(miner_name):
+    """Get raw output from miner for debugging"""
+    try:
+        if miner_name not in mining_manager.miners:
+            return jsonify({'success': False, 'message': f'Miner {miner_name} not found'}), 404
+        
+        miner = mining_manager.miners[miner_name]
+        
+        return jsonify({
+            'success': True,
+            'name': miner_name,
+            'status': miner['status'],
+            'pid': miner['pid'],
+            'latest_output': miner.get('latest_output', ''),
+            'last_output': miner.get('last_output', ''),
+            'hash_rate': miner.get('hash_rate', 0)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/auto-start', methods=['POST'])
 def trigger_auto_start():
