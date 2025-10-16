@@ -34,7 +34,7 @@ class MiningManager:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     self.miners = json.load(f)
             except Exception as e:
-                print(f"Error loading config: {e}")
+                print(f"Lỗi khi tải config: {e}")
                 self.miners = {}
         else:
             self.miners = {}
@@ -46,7 +46,7 @@ class MiningManager:
                 json.dump(self.miners, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"Error saving config: {e}")
+            print(f"Lỗi khi lưu config: {e}")
             return False
     
     def download_file(self, filename, coin_dir):
@@ -57,13 +57,13 @@ class MiningManager:
             
             # Skip if file already exists
             if os.path.exists(file_path):
-                print(f"File {filename} already exists, skipping download")
+                print(f"Tập tin {filename} đã tồn tại, bỏ qua tải xuống")
                 # Make sure it's executable on Linux
                 if os.name == 'posix' and not filename.endswith('.dll'):
                     os.chmod(file_path, 0o755)
                 return True
             
-            print(f"Downloading {filename} from {url}...")
+            print(f"Đang tải xuống {filename} từ {url}...")
             response = requests.get(url, stream=True)
             response.raise_for_status()
             
@@ -77,13 +77,13 @@ class MiningManager:
             # Make executable on Linux (except for .dll files)
             if os.name == 'posix' and not filename.endswith('.dll'):
                 os.chmod(file_path, 0o755)
-                print(f"Made {filename} executable")
+                print(f"Đã cấp quyền thực thi cho {filename}")
             
-            print(f"Downloaded {filename} successfully")
+            print(f"Tải xuống {filename} thành công")
             return True
             
         except Exception as e:
-            print(f"Error downloading {filename}: {e}")
+            print(f"Lỗi khi tải xuống {filename}: {e}")
             return False
     
     def setup_coin_environment(self, coin_name, mining_tool, required_files):
@@ -94,7 +94,7 @@ class MiningManager:
             # Download required files
             for filename in required_files:
                 if not self.download_file(filename, coin_dir):
-                    return False, f"Failed to download {filename}"
+                    return False, f"Không thể tải xuống {filename}"
             
             # Make executable files executable (for mining tools)
             mining_exe = os.path.join(coin_dir, f"{mining_tool}.exe")
@@ -113,13 +113,13 @@ class MiningManager:
             # Check if miner exists and is running - stop it first
             need_restart = False
             if name in self.miners and self.miners[name].get('status') == 'running':
-                print(f"[UPDATE-CONFIG] Miner {name} is running, stopping before update...")
+                print(f"[CẬP NHẬT] Miner {name} đang chạy, dừng lại để cập nhật...")
                 stop_result = self.stop_miner(name)
                 if stop_result['success']:
-                    print(f"[UPDATE-CONFIG] Successfully stopped {name}")
+                    print(f"[CẬP NHẬT] Đã dừng {name} thành công")
                     need_restart = auto_start  # Only restart if auto_start is enabled
                 else:
-                    print(f"[UPDATE-CONFIG] Failed to stop {name}: {stop_result['message']}")
+                    print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
                     # Continue with config update anyway
             
             # Default required files based on mining tool
@@ -160,17 +160,17 @@ class MiningManager:
             
             # Restart miner if it was running and auto_start is enabled
             if need_restart:
-                print(f"[UPDATE-CONFIG] Restarting {name} after config update...")
+                print(f"[CẬP NHẬT] Đang khởi động lại {name} sau khi cập nhật cấu hình...")
                 time.sleep(2)  # Small delay before restart
                 start_result = self.start_miner(name)
                 if start_result['success']:
-                    print(f"[UPDATE-CONFIG] Successfully restarted {name}")
-                    return config_saved, f"Configuration updated and {name} restarted successfully"
+                    print(f"[CẬP NHẬT] Đã khởi động lại {name} thành công")
+                    return config_saved, f"Đã cập nhật cấu hình và khởi động lại {name} thành công"
                 else:
-                    print(f"[UPDATE-CONFIG] Failed to restart {name}: {start_result['message']}")
-                    return config_saved, f"Configuration updated but failed to restart {name}: {start_result['message']}"
+                    print(f"[CẬP NHẬT] Không thể khởi động lại {name}: {start_result['message']}")
+                    return config_saved, f"Đã cập nhật cấu hình nhưng không thể khởi động lại {name}: {start_result['message']}"
             
-            return config_saved, "Configuration updated successfully"
+            return config_saved, "Cập nhật cấu hình thành công"
             
         except Exception as e:
             return False, str(e)
@@ -196,7 +196,7 @@ class MiningManager:
     def auto_start_miners(self):
         """Auto-start miners that have auto_start enabled"""
         if not self.auto_start_enabled:
-            print("Auto-start is globally disabled")
+            print("Tự động khởi động đã bị vô hiệu hóa toàn cục")
             return
         
         auto_start_miners = []
@@ -205,16 +205,16 @@ class MiningManager:
                 auto_start_miners.append(name)
         
         if auto_start_miners:
-            print(f"Auto-starting miners: {auto_start_miners}")
+            print(f"Tự động khởi động các miner: {auto_start_miners}")
             for name in auto_start_miners:
                 result = self.start_miner(name)
                 if result['success']:
-                    print(f"✅ Auto-started {name}")
+                    print(f"✅ Đã tự động khởi động {name}")
                 else:
-                    print(f"❌ Failed to auto-start {name}: {result['message']}")
+                    print(f"❌ Không thể tự động khởi động {name}: {result['message']}")
                 time.sleep(2)  # Delay between starts
         else:
-            print("No miners configured for auto-start")
+            print("Không có miner nào được cấu hình để tự động khởi động")
     
     def set_auto_start_global(self, enabled):
         """Enable/disable auto-start globally"""
@@ -224,12 +224,12 @@ class MiningManager:
     def start_miner(self, name):
         """Start a mining process"""
         if name not in self.miners:
-            return {'success': False, 'message': f'Miner {name} not found'}
+            return {'success': False, 'message': f'Miner {name} không tồn tại'}
         
         miner = self.miners[name]
         
         if miner['status'] == 'running':
-            return {'success': False, 'message': f'Miner {name} is already running'}
+            return {'success': False, 'message': f'Miner {name} đã đang chạy'}
         
         try:
             # Write config to file or prepare command args
@@ -248,7 +248,7 @@ class MiningManager:
                 # Prepare command with config file
                 coin_dir = miner.get('coin_dir')
                 if not coin_dir or not os.path.exists(coin_dir):
-                    return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
+                    return {'success': False, 'message': f'Thư mục coin không tồn tại: {coin_dir}'}
                 
                 # Use mining tool name directly (without .exe extension)
                 mining_tool = miner.get('mining_tool', 'ccminer')
@@ -262,10 +262,10 @@ class MiningManager:
                     if os.path.exists(mining_exe_win):
                         mining_exe = mining_exe_win
                     else:
-                        return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
+                        return {'success': False, 'message': f'File thực thi mining không tồn tại: {mining_exe} hoặc {mining_exe_win}'}
                 
                 if not os.path.exists(config_file):
-                    return {'success': False, 'message': f'Config file not found: {config_file}'}
+                    return {'success': False, 'message': f'File config không tồn tại: {config_file}'}
                 
                 # Create command with config file
                 cmd = f'"{mining_exe}" -c "{config_file}"'
@@ -274,7 +274,7 @@ class MiningManager:
                 # Command line parameters approach (config is a string)
                 coin_dir = miner.get('coin_dir')
                 if not coin_dir or not os.path.exists(coin_dir):
-                    return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
+                    return {'success': False, 'message': f'Thư mục coin không tồn tại: {coin_dir}'}
                 
                 # Use mining tool name directly (without .exe extension)
                 mining_tool = miner.get('mining_tool', 'ccminer')
@@ -287,16 +287,16 @@ class MiningManager:
                     if os.path.exists(mining_exe_win):
                         mining_exe = mining_exe_win
                     else:
-                        return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
+                        return {'success': False, 'message': f'File thực thi mining không tồn tại: {mining_exe} hoặc {mining_exe_win}'}
                 
                 # Create command with parameters
                 config_params = str(miner['config']).strip()
                 cmd = f'"{mining_exe}" {config_params}'
             
-            print(f"Starting miner {name}...")
-            print(f"  Working dir: {coin_dir}")
-            print(f"  Command: {cmd}")
-            print(f"  Config type: {'JSON file' if config_is_json else 'Command line parameters'}")
+            print(f"Đang khởi động miner {name}...")
+            print(f"  Thư mục làm việc: {coin_dir}")
+            print(f"  Lệnh: {cmd}")
+            print(f"  Loại cấu hình: {'Tập tin JSON' if config_is_json else 'Tham số dòng lệnh'}")
             
             # Start mining process
             process = subprocess.Popen(
@@ -325,7 +325,7 @@ class MiningManager:
             
         except Exception as e:
             miner['status'] = 'error'
-            return {'success': False, 'message': f'Failed to start miner {name}: {str(e)}'}
+            return {'success': False, 'message': f'Không thể khởi động miner {name}: {str(e)}'}
     
     def kill_all_miners_by_name(self, process_names=None):
         """Kill all mining processes by process name (brute force)"""
@@ -386,7 +386,7 @@ class MiningManager:
                     still_alive.extend([proc] + children)
                     
                 except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    print(f"[KILL-ALL] Failed to send SIGINT to {proc.pid}: {e}")
+                    print(f"[KILL-ALL] Không thể gửi SIGINT tới {proc.pid}: {e}")
             
             # Step 3: Wait for graceful shutdown
             if still_alive:
@@ -420,7 +420,7 @@ class MiningManager:
                         pass
                     
         except Exception as e:
-            print(f"[KILL-ALL] Error in kill_all_miners_by_name: {e}")
+            print(f"[KILL-ALL] Lỗi trong kill_all_miners_by_name: {e}")
         
         print(f"[KILL-ALL] Total processes handled: {killed_count}")
         return killed_count
@@ -448,7 +448,7 @@ class MiningManager:
                             if proc.is_running():
                                 # Update hash rate from latest output
                                 hash_rate = self._extract_hash_rate(miner.get('latest_output', ''), miner.get('mining_tool', ''))
-                                if hash_rate > 0:
+                                if hash_rate is not None and hash_rate > 0:
                                     miner['hash_rate'] = hash_rate
                                 
                                 active_miners.append({
@@ -464,26 +464,26 @@ class MiningManager:
                                 miner['status'] = 'stopped'
                                 miner['pid'] = None
                                 miner['hash_rate'] = 0
-                                print(f"[MONITOR] Miner {name} process died, status reset to stopped")
+                                print(f"[THEO DÕI] Miner {name} đã dừng, reset trạng thái về stopped")
                         except (psutil.NoSuchProcess, psutil.AccessDenied):
                             # Process no longer exists
                             miner['status'] = 'stopped'
                             miner['pid'] = None
                             miner['hash_rate'] = 0
-                            print(f"[MONITOR] Miner {name} process not found, status reset to stopped")
+                            print(f"[THEO DÕI] Không tìm thấy tiến trình miner {name}, reset trạng thái về stopped")
                 
                 # Print periodic status
                 if active_miners:
-                    print(f"\n[MONITOR] === Mining Status ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
+                    print(f"\n[THEO DÕI] === Trạng thái Mining ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
                     for miner in active_miners:
                         uptime_str = f"{int(miner['uptime']//3600)}h {int((miner['uptime']%3600)//60)}m"
-                        print(f"[MONITOR] {miner['name']}: {miner['coin']} | {miner['tool']} | {miner['hash_rate']:.2f} MH/s | PID:{miner['pid']} | Up:{uptime_str}")
-                    print(f"[MONITOR] =====================================\n")
+                        print(f"[THEO DÕI] {miner['name']}: {miner['coin']} | {miner['tool']} | {miner['hash_rate']:.2f} MH/s | PID:{miner['pid']} | Thời gian:{uptime_str}")
+                    print(f"[THEO DÕI] =====================================\n")
                 else:
-                    print(f"[MONITOR] No active miners at {time.strftime('%H:%M:%S')}")
+                    print(f"[THEO DÕI] Không có miner nào đang hoạt động lúc {time.strftime('%H:%M:%S')}")
                     
             except Exception as e:
-                print(f"[MONITOR] Error in monitor_miners: {e}")
+                print(f"[THEO DÕI] Lỗi trong monitor_miners: {e}")
                 time.sleep(10)
 
     def force_kill_process_by_pid(self, pid):
@@ -508,7 +508,7 @@ class MiningManager:
                     # Check if process still exists after each command
                     check_result = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
                     if check_result.returncode != 0:
-                        print(f"[FORCE-KILL] Process {pid} successfully killed with {cmd}")
+                        print(f"[FORCE-KILL] Tiến trình {pid} đã được kết thúc thành công với {cmd}")
                         return True
                         
                     # Wait a bit before next command
@@ -517,7 +517,7 @@ class MiningManager:
                 except subprocess.TimeoutExpired:
                     print(f"[FORCE-KILL] Command timeout: {cmd}")
                 except Exception as e:
-                    print(f"[FORCE-KILL] Error running {cmd}: {e}")
+                    print(f"[FORCE-KILL] Lỗi khi chạy {cmd}: {e}")
             
             # Final check
             final_check = subprocess.run(f"ps -p {pid}", shell=True, capture_output=True, text=True)
@@ -535,12 +535,12 @@ class MiningManager:
     def stop_miner(self, name):
         """Stop a mining process"""
         if name not in self.miners:
-            return {'success': False, 'message': f'Miner {name} not found'}
+            return {'success': False, 'message': f'Miner {name} không tồn tại'}
         
         miner = self.miners[name]
         
         if miner['status'] != 'running':
-            return {'success': False, 'message': f'Miner {name} is not running'}
+            return {'success': False, 'message': f'Miner {name} không đang chạy'}
         
         try:
             if miner['pid']:
@@ -583,14 +583,14 @@ class MiningManager:
                                     child.send_signal(signal.SIGINT)
                                     print(f"[DEBUG] Sent SIGINT attempt {attempt + 1} to child {child.pid}")
                                 except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                    print(f"[DEBUG] Failed to send SIGINT to child {child.pid}: {e}")
+                                    print(f"[DEBUG] Không thể gửi SIGINT tới tiến trình con {child.pid}: {e}")
                             
                             # Small delay between attempts
                             if attempt == 0:
                                 time.sleep(2)
                                 
                         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                            print(f"[DEBUG] Failed to send SIGINT attempt {attempt + 1}: {e}")
+                            print(f"[DEBUG] Không thể gửi SIGINT lần thử {attempt + 1}: {e}")
                     
                     # Wait for graceful shutdown after SIGINT
                     print(f"[DEBUG] Waiting for graceful shutdown after SIGINT...")
@@ -619,7 +619,7 @@ class MiningManager:
                                 break
                                 
                     except Exception as wait_e:
-                        print(f"[DEBUG] Error waiting for processes: {wait_e}")
+                        print(f"[DEBUG] Lỗi chờ tiến trình: {wait_e}")
                         # Assume they are still alive
                         still_alive = all_processes
                     
@@ -631,7 +631,7 @@ class MiningManager:
                                 print(f"[DEBUG] Terminating process {proc.pid} ({proc.name() if hasattr(proc, 'name') else 'unknown'})")
                                 proc.terminate()
                             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                print(f"[DEBUG] Failed to terminate {proc.pid}: {e}")
+                                print(f"[DEBUG] Không thể kết thúc {proc.pid}: {e}")
                         
                         # Step 3: Wait for graceful shutdown after SIGTERM
                         print(f"[DEBUG] Waiting for graceful shutdown after SIGTERM...")
@@ -639,7 +639,7 @@ class MiningManager:
                             gone, still_alive = psutil.wait_procs(still_alive, timeout=6)
                             print(f"[DEBUG] After SIGTERM: {len(gone)} processes stopped, {len(still_alive)} still alive")
                         except Exception as wait_e:
-                            print(f"[DEBUG] Error waiting after SIGTERM: {wait_e}")
+                            print(f"[DEBUG] Lỗi chờ sau SIGTERM: {wait_e}")
                     
                     # Step 4: Force kill any remaining processes with SIGKILL
                     if still_alive:
@@ -649,28 +649,28 @@ class MiningManager:
                                 print(f"[DEBUG] Force killing process {proc.pid}")
                                 proc.kill()
                             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                                print(f"[DEBUG] Failed to force kill {proc.pid}: {e}")
+                                print(f"[DEBUG] Không thể buộc kết thúc {proc.pid}: {e}")
                         
                         # Step 5: Final wait to ensure all are dead
                         try:
                             print(f"[DEBUG] Final wait for {len(still_alive)} processes...")
                             psutil.wait_procs(still_alive, timeout=3)
                         except Exception as wait_e:
-                            print(f"[DEBUG] Final wait error: {wait_e}")
+                            print(f"[DEBUG] Lỗi chờ cuối cùng: {wait_e}")
                         
                 except psutil.NoSuchProcess:
                     print(f"[DEBUG] Process {miner['pid']} already terminated")
                 except Exception as e:
-                    print(f"[DEBUG] Error stopping process {miner['pid']}: {type(e).__name__}: {e}")
+                    print(f"[DEBUG] Lỗi khi dừng tiến trình {miner['pid']}: {type(e).__name__}: {e}")
                     import traceback
                     traceback.print_exc()
                     
                     # Try fallback kill using system commands
                     print(f"[DEBUG] Trying fallback system kill for PID {miner['pid']}")
                     if self.force_kill_process_by_pid(miner['pid']):
-                        print(f"[DEBUG] Successfully killed {miner['pid']} using system commands")
+                        print(f"[DEBUG] Đã kết thúc thành công {miner['pid']} bằng lệnh hệ thống")
                     else:
-                        print(f"[DEBUG] Failed to kill {miner['pid']} even with system commands")
+                        print(f"[DEBUG] Không thể kết thúc {miner['pid']} ngay cả với lệnh hệ thống")
             
             miner['status'] = 'stopped'
             miner['process'] = None
@@ -681,15 +681,15 @@ class MiningManager:
             return {'success': True, 'message': f'Miner {name} stopped'}
             
         except Exception as e:
-            print(f"[DEBUG] Failed to stop miner {name}: {type(e).__name__}: {e}")
+            print(f"[DEBUG] Không thể dừng miner {name}: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
-            return {'success': False, 'message': f'Failed to stop miner {name}: {str(e)}'}
+            return {'success': False, 'message': f'Không thể dừng miner {name}: {str(e)}'}
     
     def get_miner_status(self, name):
         """Get status of a specific miner"""
         if name not in self.miners:
-            return {'success': False, 'message': f'Miner {name} not found'}
+            return {'success': False, 'message': f'Miner {name} không tồn tại'}
         
         miner = self.miners[name]
         
@@ -751,13 +751,13 @@ class MiningManager:
                 # Extract hash rate from output (tool-specific patterns)
                 # Only extract from accepted lines to avoid noise
                 line_lower = line.lower()
-                if 'accepted:' in line_lower:
+                if 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
                     if hash_rate:
                         miner['hash_rate'] = hash_rate
                 
                 # Print important mining output
-                if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'connected', 'difficulty']):
+                if any(keyword in line_lower for keyword in ['accepted', 'rejected', 'error', 'connected', 'difficulty', 'hashrate']):
                     print(f"[{name}] {line.strip()}")
                 
                 # Check if process is still running
@@ -769,10 +769,10 @@ class MiningManager:
             miner['process'] = None
             miner['pid'] = None
             miner['hash_rate'] = 0
-            print(f"[{name}] Mining process ended")
+            print(f"[{name}] Tiến trình mining đã kết thúc")
             
         except Exception as e:
-            print(f"[ERROR] Error monitoring miner {name}: {e}")
+            print(f"[LỖI] Lỗi khi theo dõi miner {name}: {e}")
             miner['status'] = 'error'
             miner['status'] = 'error'
     
@@ -794,6 +794,15 @@ class MiningManager:
             # XMRig patterns: "speed 10s/60s/15m 1000.0 1000.0 1000.0 H/s"
             patterns = [
                 r'speed\s+\S+\s+(\d+\.?\d*)\s+\d+\.?\d*\s+\d+\.?\d*\s*([kmgtKMGT]?[Hh]/s)',
+                r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
+            ]
+        elif mining_tool.lower() == 'astrominer':
+            # Astrominer patterns: 
+            # "[dero] 16-10-2025 03:29:57 [dero.rabidmining.com:10300] Accepted 159 | Rejected 0 | Height 6076878 | Diff 20000 | Uptime 00:03:01 | Hashrate 0.956KH/s."
+            patterns = [
+                r'Hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
+                r'hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
+                r'\|\s*Hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',  # Specific for astrominer format
                 r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
             ]
         else:
@@ -853,26 +862,26 @@ def update_config():
         stop_all_first = request.args.get('stop_all_first', 'false').lower() == 'true'
         
         if not isinstance(data, list):
-            return jsonify({'success': False, 'message': 'Expected array of miner configurations'}), 400
+            return jsonify({'success': False, 'message': 'Yêu cầu mảng các cấu hình miner'}), 400
         
         # Option to stop all miners first
         if stop_all_first:
-            print("[UPDATE-CONFIG] Stopping all miners before config update...")
+            print("[CẬP NHẬT] Đang dừng tất cả miners trước khi cập nhật cấu hình...")
             running_miners = []
             for name, miner in mining_manager.miners.items():
                 if miner.get('status') == 'running':
                     running_miners.append(name)
             
             for name in running_miners:
-                print(f"[UPDATE-CONFIG] Stopping {name}...")
+                print(f"[CẬP NHẬT] Đang dừng {name}...")
                 stop_result = mining_manager.stop_miner(name)
                 if stop_result['success']:
-                    print(f"[UPDATE-CONFIG] Stopped {name}")
+                    print(f"[CẬP NHẬT] Đã dừng {name}")
                 else:
-                    print(f"[UPDATE-CONFIG] Failed to stop {name}: {stop_result['message']}")
+                    print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
             
             if running_miners:
-                print(f"[UPDATE-CONFIG] Stopped {len(running_miners)} miners, waiting 3 seconds...")
+                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 3 giây...")
                 time.sleep(3)
         
         results = []
@@ -882,7 +891,7 @@ def update_config():
                 results.append({
                     'name': miner_config.get('name', 'unknown'),
                     'success': False,
-                    'message': 'Missing required fields: name, coin_name, mining_tool, config'
+                    'message': 'Thiếu các trường bắt buộc: name, coin_name, mining_tool, config'
                 })
                 continue
             
@@ -927,7 +936,7 @@ def start_mining():
                 results.append(result)
             return jsonify({'success': True, 'results': results})
         else:
-            return jsonify({'success': False, 'message': 'Expected "name" or "names" field'}), 400
+            return jsonify({'success': False, 'message': 'Yêu cầu trường "name" hoặc "names"'}), 400
             
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -953,7 +962,7 @@ def stop_mining():
                 results.append(result)
             return jsonify({'success': True, 'results': results})
         else:
-            return jsonify({'success': False, 'message': 'Expected "name" or "names" field'}), 400
+            return jsonify({'success': False, 'message': 'Yêu cầu trường "name" hoặc "names"'}), 400
             
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -1115,7 +1124,7 @@ if __name__ == '__main__':
     import sys
     
     def signal_handler(sig, frame):
-        print('\nShutting down Mining Management Server...')
+        print('\nĐang tắt Server Quản lý Mining...')
         # Stop all running miners
         for name, miner in mining_manager.miners.items():
             if miner.get('status') == 'running':
@@ -1127,7 +1136,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    print("Starting Mining Management Server...")
+    print("Đang khởi động Server Quản lý Mining...")
     
     # Start auto-start in a separate thread after a delay
     def delayed_auto_start():
@@ -1136,12 +1145,12 @@ if __name__ == '__main__':
         try:
             mining_manager.auto_start_miners()
         except Exception as e:
-            print(f"Error in auto-start: {e}")
+            print(f"Lỗi trong auto-start: {e}")
     
     # Start monitoring thread
     def start_monitoring():
         time.sleep(10)  # Wait 10 seconds before starting monitoring
-        print("\n📊 Starting mining monitor...")
+        print("\n📊 Đang khởi động bộ giám sát mining...")
         mining_manager.monitor_miners()
     
     auto_start_thread = threading.Thread(target=delayed_auto_start)
@@ -1155,5 +1164,5 @@ if __name__ == '__main__':
     try:
         app.run(host='0.0.0.0', port=9098, debug=False)
     except Exception as e:
-        print(f"❌ Server failed to start: {e}")
+        print(f"❌ Server không thể khởi động: {e}")
         sys.exit(1)
