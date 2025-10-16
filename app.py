@@ -548,7 +548,8 @@ class MiningManager:
                     print(f"\n[THEO DÕI] === Trạng thái Mining ({time.strftime('%Y-%m-%d %H:%M:%S')}) ===")
                     for miner in active_miners:
                         uptime_str = f"{int(miner['uptime']//3600)}h {int((miner['uptime']%3600)//60)}m"
-                        print(f"[THEO DÕI] {miner['name']}: {miner['coin']} | {miner['tool']} | {miner['hash_rate']:.2f} MH/s | PID:{miner['pid']} | Thời gian:{uptime_str}")
+                        hash_info = self._format_hash_rate(miner['hash_rate'])
+                        print(f"[THEO DÕI] {miner['name']}: {miner['coin']} | {miner['tool']} | {hash_info['value']:.2f} {hash_info['unit']} | PID:{miner['pid']} | Thời gian:{uptime_str}")
                     print(f"[THEO DÕI] =====================================\n")
                 else:
                     print(f"[THEO DÕI] Không có miner nào đang hoạt động lúc {time.strftime('%H:%M:%S')}")
@@ -861,7 +862,7 @@ class MiningManager:
             'status': miner['status'],
             'pid': miner['pid'],
             'start_time': miner['start_time'],
-            'hash_rate': miner['hash_rate'] * 1000000,  # Convert MH/s to H/s for client
+            'hash_rate': self._format_hash_rate(miner['hash_rate']),
             'coin_name': miner.get('coin_name', ''),
             'mining_tool': miner.get('mining_tool', ''),
             'auto_start': miner.get('auto_start', False),
@@ -917,18 +918,9 @@ class MiningManager:
                 # Astrominer: extract from any line with "Hashrate"
                 if tool_name == 'astrominer':
                     if 'hashrate' in line_lower:
-                        # Debug: show raw line to check for ANSI codes
-                        print(f"[{name}] [DEBUG-HASH] Raw: {repr(line.strip())}")
                         hash_rate = self._extract_hash_rate(line, tool_name)
                         if hash_rate:
                             miner['hash_rate'] = hash_rate
-                            print(f"[{name}] [DEBUG-HASH] Extracted: {hash_rate} MH/s")
-                        else:
-                            print(f"[{name}] [DEBUG-HASH] Failed to extract hash rate from line")
-                    # Debug: check why hashrate not in line
-                    elif 'accepted' in line_lower and line_count <= 30:
-                        print(f"[{name}] [DEBUG] Line has 'accepted' but not 'hashrate': {line.strip()[:100]}")
-                        print(f"[{name}] [DEBUG] line_lower contains: {'hashrate' if 'hashrate' in line_lower else 'NO HASHRATE'}")
                 # CCMiner/XMRig: extract only from accepted lines
                 elif 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, tool_name)
@@ -954,6 +946,19 @@ class MiningManager:
             print(f"[LỖI] Lỗi khi theo dõi miner {name}: {e}")
             miner['status'] = 'error'
             miner['status'] = 'error'
+    
+    def _format_hash_rate(self, hash_rate_mh):
+        """Format hash rate with smart unit selection (KH/s, MH/s, GH/s)"""
+        if hash_rate_mh is None or hash_rate_mh == 0:
+            return {'value': 0, 'unit': 'H/s'}
+        
+        # Auto-select best unit
+        if hash_rate_mh >= 1000:  # >= 1000 MH/s -> use GH/s
+            return {'value': round(hash_rate_mh / 1000, 2), 'unit': 'GH/s'}
+        elif hash_rate_mh >= 0.01:  # >= 0.01 MH/s -> use MH/s
+            return {'value': round(hash_rate_mh, 2), 'unit': 'MH/s'}
+        else:  # < 0.01 MH/s -> use KH/s
+            return {'value': round(hash_rate_mh * 1000, 2), 'unit': 'KH/s'}
     
     def _extract_hash_rate(self, line, mining_tool=''):
         """Extract hash rate from miner output based on mining tool"""
