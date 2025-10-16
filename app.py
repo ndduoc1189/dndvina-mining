@@ -206,46 +206,71 @@ class MiningManager:
             return {'success': False, 'message': f'Miner {name} is already running'}
         
         try:
-            # Write config to file
-            if miner['config_file'] and miner['config']:
-                config_dir = os.path.dirname(miner['config_file'])
-                if config_dir and not os.path.exists(config_dir):
-                    os.makedirs(config_dir)
-                
-                with open(miner['config_file'], 'w', encoding='utf-8') as f:
-                    if isinstance(miner['config'], dict):
+            # Write config to file or prepare command args
+            config_is_json = isinstance(miner['config'], dict)
+            
+            if config_is_json:
+                # Traditional JSON config file approach
+                if miner['config_file'] and miner['config']:
+                    config_dir = os.path.dirname(miner['config_file'])
+                    if config_dir and not os.path.exists(config_dir):
+                        os.makedirs(config_dir)
+                    
+                    with open(miner['config_file'], 'w', encoding='utf-8') as f:
                         json.dump(miner['config'], f, indent=2)
+                
+                # Prepare command with config file
+                coin_dir = miner.get('coin_dir')
+                if not coin_dir or not os.path.exists(coin_dir):
+                    return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
+                
+                # Use mining tool name directly (without .exe extension)
+                mining_tool = miner.get('mining_tool', 'ccminer')
+                mining_exe = os.path.abspath(os.path.join(coin_dir, mining_tool))
+                config_file = os.path.abspath(miner['config_file'])
+                
+                # Check if executable exists (try with and without .exe for cross-platform)
+                if not os.path.exists(mining_exe):
+                    # Try with .exe extension for Windows
+                    mining_exe_win = mining_exe + '.exe'
+                    if os.path.exists(mining_exe_win):
+                        mining_exe = mining_exe_win
                     else:
-                        f.write(str(miner['config']))
-            
-            # Prepare command with absolute paths
-            coin_dir = miner.get('coin_dir')
-            if not coin_dir or not os.path.exists(coin_dir):
-                return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
-            
-            # Use mining tool name directly (without .exe extension)
-            mining_tool = miner.get('mining_tool', 'ccminer')
-            mining_exe = os.path.abspath(os.path.join(coin_dir, mining_tool))
-            config_file = os.path.abspath(miner['config_file'])
-            
-            # Check if executable exists (try with and without .exe for cross-platform)
-            if not os.path.exists(mining_exe):
-                # Try with .exe extension for Windows
-                mining_exe_win = mining_exe + '.exe'
-                if os.path.exists(mining_exe_win):
-                    mining_exe = mining_exe_win
-                else:
-                    return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
-            
-            if not os.path.exists(config_file):
-                return {'success': False, 'message': f'Config file not found: {config_file}'}
-            
-            # Create command with absolute paths
-            cmd = f'"{mining_exe}" -c "{config_file}"'
+                        return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
+                
+                if not os.path.exists(config_file):
+                    return {'success': False, 'message': f'Config file not found: {config_file}'}
+                
+                # Create command with config file
+                cmd = f'"{mining_exe}" -c "{config_file}"'
+                
+            else:
+                # Command line parameters approach (config is a string)
+                coin_dir = miner.get('coin_dir')
+                if not coin_dir or not os.path.exists(coin_dir):
+                    return {'success': False, 'message': f'Coin directory not found: {coin_dir}'}
+                
+                # Use mining tool name directly (without .exe extension)
+                mining_tool = miner.get('mining_tool', 'ccminer')
+                mining_exe = os.path.abspath(os.path.join(coin_dir, mining_tool))
+                
+                # Check if executable exists (try with and without .exe for cross-platform)
+                if not os.path.exists(mining_exe):
+                    # Try with .exe extension for Windows
+                    mining_exe_win = mining_exe + '.exe'
+                    if os.path.exists(mining_exe_win):
+                        mining_exe = mining_exe_win
+                    else:
+                        return {'success': False, 'message': f'Mining executable not found: {mining_exe} or {mining_exe_win}'}
+                
+                # Create command with parameters
+                config_params = str(miner['config']).strip()
+                cmd = f'"{mining_exe}" {config_params}'
             
             print(f"Starting miner {name}...")
             print(f"  Working dir: {coin_dir}")
             print(f"  Command: {cmd}")
+            print(f"  Config type: {'JSON file' if config_is_json else 'Command line parameters'}")
             
             # Start mining process
             process = subprocess.Popen(

@@ -61,7 +61,7 @@ dndvina-mining/
 ### 1. Cập nhật cấu hình miners (với auto-download & auto-start)
 **POST** `/api/update-config`
 
-Body:
+#### Option 1: JSON Config File (Traditional)
 ```json
 [
   {
@@ -75,26 +75,36 @@ Body:
           "url": "stratum+tcp://ap.luckpool.net:3956",
           "timeout": 150,
           "disabled": 0
-        },
-        {
-          "name": "NA",
-          "url": "stratum+tcp://eu.luckpool.net:3956",
-          "timeout": 60,
-          "time-limit": 1000,
-          "disabled": 0
         }
       ],
       "user": "RCtqovjA8xLBxdQoHJcepDBd9h6Lh7pPxp.[DEVICE_ID]",
       "algo": "verus",
       "threads": 8,
-      "cpu-priority": 1,
-      "retry-pause": 5
+      "cpu-priority": 1
     },
-    "required_files": ["ccminer.exe", "libcrypto-1_1-x64.dll"],  // optional
-    "auto_start": true  // optional - enable auto-start
+    "required_files": ["ccminer.exe", "libcrypto-1_1-x64.dll"],
+    "auto_start": true
   }
 ]
 ```
+
+#### Option 2: Command Line Parameters (For tools without JSON support)
+```json
+[
+  {
+    "name": "dero-miner",
+    "coin_name": "dero",
+    "mining_tool": "astrominer",
+    "config": "-w deroi1qyzlxxgq2weyqlxg5u4tkng2lf5rktwanqhse2hwm577ps22zv2x2q9pvfz92xmuult2g6ux5gdq3nrkqk.[DEVICE_ID] -r community-pools.mysrv.cloud:10300 -r1 dero.rabidmining.com:10300 -r2 dero.rabidmining.com:10300 -m 8 -p rpc",
+    "required_files": ["astrominer"],
+    "auto_start": true
+  }
+]
+```
+
+**Command Generation:**
+- **JSON Config**: `./ccminer -c config.json`
+- **CLI Parameters**: `./astrominer -w WALLET -r POOL:PORT -m 8`
 
 ### 2. Mining tools được hỗ trợ
 
