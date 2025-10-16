@@ -110,6 +110,18 @@ class MiningManager:
     def update_miner_config(self, name, coin_name, mining_tool, config, required_files=None, auto_start=False):
         """Update miner configuration with auto-download support"""
         try:
+            # Check if miner exists and is running - stop it first
+            need_restart = False
+            if name in self.miners and self.miners[name].get('status') == 'running':
+                print(f"[UPDATE-CONFIG] Miner {name} is running, stopping before update...")
+                stop_result = self.stop_miner(name)
+                if stop_result['success']:
+                    print(f"[UPDATE-CONFIG] Successfully stopped {name}")
+                    need_restart = auto_start  # Only restart if auto_start is enabled
+                else:
+                    print(f"[UPDATE-CONFIG] Failed to stop {name}: {stop_result['message']}")
+                    # Continue with config update anyway
+            
             # Default required files based on mining tool
             if required_files is None:
                 required_files = self.get_default_files(mining_tool)
@@ -144,7 +156,21 @@ class MiningManager:
                 'auto_start': auto_start  # Add auto-start flag
             }
             
-            return self.save_config(), "Configuration updated successfully"
+            config_saved = self.save_config()
+            
+            # Restart miner if it was running and auto_start is enabled
+            if need_restart:
+                print(f"[UPDATE-CONFIG] Restarting {name} after config update...")
+                time.sleep(2)  # Small delay before restart
+                start_result = self.start_miner(name)
+                if start_result['success']:
+                    print(f"[UPDATE-CONFIG] Successfully restarted {name}")
+                    return config_saved, f"Configuration updated and {name} restarted successfully"
+                else:
+                    print(f"[UPDATE-CONFIG] Failed to restart {name}: {start_result['message']}")
+                    return config_saved, f"Configuration updated but failed to restart {name}: {start_result['message']}"
+            
+            return config_saved, "Configuration updated successfully"
             
         except Exception as e:
             return False, str(e)
@@ -820,12 +846,34 @@ def update_config():
             "auto_start": true  // optional
         }
     ]
+    Query params: ?stop_all_first=true (to stop all miners before update)
     """
     try:
         data = request.get_json()
+        stop_all_first = request.args.get('stop_all_first', 'false').lower() == 'true'
         
         if not isinstance(data, list):
             return jsonify({'success': False, 'message': 'Expected array of miner configurations'}), 400
+        
+        # Option to stop all miners first
+        if stop_all_first:
+            print("[UPDATE-CONFIG] Stopping all miners before config update...")
+            running_miners = []
+            for name, miner in mining_manager.miners.items():
+                if miner.get('status') == 'running':
+                    running_miners.append(name)
+            
+            for name in running_miners:
+                print(f"[UPDATE-CONFIG] Stopping {name}...")
+                stop_result = mining_manager.stop_miner(name)
+                if stop_result['success']:
+                    print(f"[UPDATE-CONFIG] Stopped {name}")
+                else:
+                    print(f"[UPDATE-CONFIG] Failed to stop {name}: {stop_result['message']}")
+            
+            if running_miners:
+                print(f"[UPDATE-CONFIG] Stopped {len(running_miners)} miners, waiting 3 seconds...")
+                time.sleep(3)
         
         results = []
         for miner_config in data:

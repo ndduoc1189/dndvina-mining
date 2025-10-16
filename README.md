@@ -59,7 +59,12 @@ dndvina-mining/
 ## API Endpoints
 
 ### 1. Cập nhật cấu hình miners (với auto-download & auto-start)
-**POST** `/api/update-config`
+**POST** `/api/update-config?stop_all_first=true`
+
+**Auto Stop-Restart Logic:**
+- **Individual miners**: Nếu miner đang chạy, sẽ tự động stop → update config → restart (nếu auto_start=true)
+- **Global stop**: Thêm `?stop_all_first=true` để stop tất cả miners trước khi update
+- **Safe updates**: Đảm bảo không conflict khi update config
 
 #### Option 1: JSON Config File (Traditional)
 ```json
