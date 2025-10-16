@@ -153,26 +153,14 @@ class MiningManager:
         """Get default required files for different mining tools"""
         default_files = {
             'ccminer': ['ccminer.exe', 'libcrypto-1_1-x64.dll'],  # Windows version
-            't-rex': ['t-rex.exe'],
-            'gminer': ['miner.exe'],
-            'xmrig': ['xmrig.exe'],
-            'teamredminer': ['teamredminer.exe'],
-            'phoenixminer': ['PhoenixMiner.exe'],
-            'claymore': ['EthDcrMiner64.exe'],
-            'nbminer': ['nbminer.exe']
+            'xmrig': ['xmrig.exe']
         }
         
         # For Linux, we might need different files
         if os.name == 'posix':  # Linux/Unix
             linux_files = {
                 'ccminer': ['ccminer'],
-                't-rex': ['t-rex'],
-                'gminer': ['miner'],
-                'xmrig': ['xmrig'],
-                'teamredminer': ['teamredminer'],
-                'phoenixminer': ['PhoenixMiner'],
-                'claymore': ['ethdcrminer64'],
-                'nbminer': ['nbminer']
+                'xmrig': ['xmrig']
             }
             return linux_files.get(mining_tool.lower(), [mining_tool])
         
@@ -301,7 +289,7 @@ class MiningManager:
             
             # If no miners configured, use common mining tools as fallback
             if not process_names:
-                process_names = {'ccminer', 'cpuminer', 'xmrig', 't-rex', 'miner', 'PhoenixMiner'}
+                process_names = {'ccminer', 'xmrig'}
         
         killed_count = 0
         found_processes = []
@@ -660,37 +648,19 @@ class MiningManager:
         
         # Tool-specific patterns
         if mining_tool.lower() == 'ccminer':
-            # CCMiner patterns: "GPU #0: GeForce GTX 1080, 25.50 MH/s"
+            # CCMiner patterns: 
+            # "accepted: 123/124 (diff 0.01), 4.95 kH/s yes!"
+            # "GPU #0: GeForce GTX 1080, 25.50 MH/s"
             patterns = [
+                r'accepted:\s*\d+\/\d+\s*\(diff\s*\d+\.\d+\),\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]\/s)\s*yes!',
                 r'GPU #\d+:.*?(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
                 r'[Tt]otal:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-            ]
-        elif mining_tool.lower() == 't-rex':
-            # T-Rex patterns: "GPU #0: 45.5 MH/s"
-            patterns = [
-                r'GPU #\d+:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'[Tt]otal:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-            ]
-        elif mining_tool.lower() == 'gminer':
-            # GMiner patterns
-            patterns = [
-                r'GPU\d+\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'[Ss]peed:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
                 r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
             ]
         elif mining_tool.lower() == 'xmrig':
             # XMRig patterns: "speed 10s/60s/15m 1000.0 1000.0 1000.0 H/s"
             patterns = [
                 r'speed\s+\S+\s+(\d+\.?\d*)\s+\d+\.?\d*\s+\d+\.?\d*\s*([kmgtKMGT]?[Hh]/s)',
-                r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-            ]
-        elif mining_tool.lower() == 'phoenixminer':
-            # PhoenixMiner patterns
-            patterns = [
-                r'GPU\d+:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'[Tt]otal\s*[Ss]peed:\s*(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
                 r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
             ]
         else:
@@ -709,15 +679,17 @@ class MiningManager:
                     value = float(match.group(1))
                     unit = match.group(2).lower() if len(match.groups()) > 1 else ''
                     
-                    # Convert to H/s based on unit
+                    # Convert to MH/s for display consistency
                     if 'k' in unit:
-                        value *= 1000
+                        value = value / 1000  # kH/s to MH/s
                     elif 'm' in unit:
-                        value *= 1000000
+                        value = value  # MH/s stays the same
                     elif 'g' in unit:
-                        value *= 1000000000
+                        value = value * 1000  # GH/s to MH/s
                     elif 't' in unit:
-                        value *= 1000000000000
+                        value = value * 1000000  # TH/s to MH/s
+                    else:
+                        value = value / 1000000  # H/s to MH/s
                     
                     return value
                 except:
@@ -1012,16 +984,16 @@ if __name__ == '__main__':
     print("  POST /api/auto-start/config - Enable/disable auto-start")
     print("  GET  /api/auto-start/config - Get auto-start configuration")
     print("")
-    print("Mining tools supported: ccminer, t-rex, gminer, xmrig, phoenixminer, etc.")
+    print("Mining tools supported: ccminer, xmrig")
     print("Files auto-download from: http://cdn.dndvina.com/minings/")
     print("")
     print("Example config:")
     print('POST /api/update-config')
     print('[{')
-    print('  "name": "ethereum-gpu1",')
-    print('  "coin_name": "ethereum",')
+    print('  "name": "vrsc-gpu1",')
+    print('  "coin_name": "vrsc",')
     print('  "mining_tool": "ccminer",')
-    print('  "config": {"pool": "eth-pool.com:4444", "wallet": "0x123..."},')
+    print('  "config": {"pool": "stratum+tcp://pool.com:4444", "wallet": "RCt..."},')
     print('  "auto_start": true')
     print('}]')
     
