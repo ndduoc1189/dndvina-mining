@@ -917,9 +917,14 @@ class MiningManager:
                 # Astrominer: extract from any line with "Hashrate"
                 if tool_name == 'astrominer':
                     if 'hashrate' in line_lower:
+                        # Debug: show raw line to check for ANSI codes
+                        if line_count <= 5:  # Debug first 5 hashrate lines
+                            print(f"[{name}] [DEBUG-HASH] Raw: {repr(line.strip())}")
                         hash_rate = self._extract_hash_rate(line, tool_name)
                         if hash_rate:
                             miner['hash_rate'] = hash_rate
+                            if line_count <= 5:
+                                print(f"[{name}] [DEBUG-HASH] Extracted: {hash_rate} MH/s")
                 # CCMiner/XMRig: extract only from accepted lines
                 elif 'accepted:' in line_lower or 'accepted ' in line_lower:
                     hash_rate = self._extract_hash_rate(line, tool_name)
@@ -948,6 +953,11 @@ class MiningManager:
     
     def _extract_hash_rate(self, line, mining_tool=''):
         """Extract hash rate from miner output based on mining tool"""
+        
+        # Remove ANSI color codes that some miners use (like astrominer)
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_line = ansi_escape.sub('', line)
         
         # Tool-specific patterns
         if mining_tool.lower() == 'ccminer':
@@ -985,7 +995,7 @@ class MiningManager:
             ]
         
         for pattern in patterns:
-            match = re.search(pattern, line, re.IGNORECASE)
+            match = re.search(pattern, clean_line, re.IGNORECASE)
             if match:
                 try:
                     value = float(match.group(1))
