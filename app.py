@@ -910,10 +910,19 @@ class MiningManager:
                     miner['latest_output'] = miner['latest_output'][-5000:]
                 
                 # Extract hash rate from output (tool-specific patterns)
-                # Only extract from accepted lines to avoid noise
+                # Different extraction logic for different tools
                 line_lower = line.lower()
-                if 'accepted:' in line_lower or 'accepted ' in line_lower:
-                    hash_rate = self._extract_hash_rate(line, miner.get('mining_tool', ''))
+                tool_name = miner.get('mining_tool', '').lower()
+                
+                # Astrominer: extract from any line with "Hashrate"
+                if tool_name == 'astrominer':
+                    if 'hashrate' in line_lower:
+                        hash_rate = self._extract_hash_rate(line, tool_name)
+                        if hash_rate:
+                            miner['hash_rate'] = hash_rate
+                # CCMiner/XMRig: extract only from accepted lines
+                elif 'accepted:' in line_lower or 'accepted ' in line_lower:
+                    hash_rate = self._extract_hash_rate(line, tool_name)
                     if hash_rate:
                         miner['hash_rate'] = hash_rate
                 
@@ -959,11 +968,11 @@ class MiningManager:
             ]
         elif mining_tool.lower() == 'astrominer':
             # Astrominer patterns: 
-            # "[dero] 16-10-2025 03:29:57 [dero.rabidmining.com:10300] Accepted 159 | Rejected 0 | Height 6076878 | Diff 20000 | Uptime 00:03:01 | Hashrate 0.956KH/s."
+            # "[dero] 16-10-2025 03:29:57 [dero.rabidmining.com:10300] Accepted 159 | Rejected 0 | Height 6076878 | Diff 20000 | Uptime 00:03:01 | Hashrate 0.956KH/s"
             patterns = [
-                r'Hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
-                r'\|\s*Hashrate\s+(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',  # Specific for astrominer format
+                r'Hashrate\s+(\d+\.?\d*)([kmgtKMGT]?[Hh]/s)',  # Hashrate 1.179KH/s (no space before unit)
+                r'hashrate\s+(\d+\.?\d*)([kmgtKMGT]?[Hh]/s)',
+                r'\|\s*Hashrate\s+(\d+\.?\d*)([kmgtKMGT]?[Hh]/s)',
                 r'(\d+\.?\d*)\s*([kmgtKMGT]?[Hh]/s)',
             ]
         else:
