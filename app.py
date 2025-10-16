@@ -1055,29 +1055,6 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, signal_handler)
     
     print("Starting Mining Management Server...")
-    print("API Endpoints:")
-    print("  POST /api/update-config - Update miner configurations (auto-download)")
-    print("  POST /api/start - Start mining")
-    print("  POST /api/stop - Stop mining")
-    print("  GET  /api/status - Get mining status")
-    print("  GET  /api/miners - List all miners")
-    print("  GET  /api/health - Health check")
-    print("  POST /api/auto-start - Manually trigger auto-start")
-    print("  POST /api/auto-start/config - Enable/disable auto-start")
-    print("  GET  /api/auto-start/config - Get auto-start configuration")
-    print("")
-    print("Mining tools supported: ccminer, xmrig")
-    print("Files auto-download from: http://cdn.dndvina.com/minings/")
-    print("")
-    print("Example config:")
-    print('POST /api/update-config')
-    print('[{')
-    print('  "name": "vrsc-gpu1",')
-    print('  "coin_name": "vrsc",')
-    print('  "mining_tool": "ccminer",')
-    print('  "config": {"pool": "stratum+tcp://pool.com:4444", "wallet": "RCt..."},')
-    print('  "auto_start": true')
-    print('}]')
     
     # Start auto-start in a separate thread after a delay
     def delayed_auto_start():
@@ -1103,7 +1080,7 @@ if __name__ == '__main__':
     monitor_thread.start()
     
     try:
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=9098, debug=False)
     except Exception as e:
         print(f"❌ Server failed to start: {e}")
         sys.exit(1)
