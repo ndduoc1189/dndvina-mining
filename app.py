@@ -862,7 +862,7 @@ class MiningManager:
             'status': miner['status'],
             'pid': miner['pid'],
             'start_time': miner['start_time'],
-            'hash_rate': self._format_hash_rate(miner['hash_rate']),
+            'hash_rate': miner['hash_rate'] * 1_000_000 if miner['hash_rate'] is not None else 0,  # Always return H/s for API
             'coin_name': miner.get('coin_name', ''),
             'mining_tool': miner.get('mining_tool', ''),
             'auto_start': miner.get('auto_start', False),
