@@ -12,6 +12,17 @@ import requests
 import hashlib
 from urllib.parse import urlparse
 import logging
+import sys
+
+# Setup early signal handling to prevent ugly traceback
+def _early_interrupt_handler(sig, frame):
+    print('\n🛑 Server interrupted during startup')
+    sys.exit(0)
+
+# Only set if running as main (not as import)
+if __name__ == '__main__':
+    signal.signal(signal.SIGINT, _early_interrupt_handler)
+    signal.signal(signal.SIGTERM, _early_interrupt_handler)
 
 # Import configuration
 import config
@@ -1425,19 +1436,43 @@ def get_auto_start_config():
 if __name__ == '__main__':
     import signal
     import sys
+    import atexit
+    
+    # Global flag for graceful shutdown
+    shutdown_flag = False
     
     def signal_handler(sig, frame):
-        print('\nĐang tắt Server Quản lý Mining...')
+        global shutdown_flag
+        if shutdown_flag:
+            print('\n⚠️  Force stopping...')
+            sys.exit(1)
+        
+        shutdown_flag = True
+        print('\n🛑 Đang tắt Server Quản lý Mining...')
+        print('   (Nhấn Ctrl+C lần nữa để force stop)')
+        
         # Stop all running miners
-        for name, miner in mining_manager.miners.items():
-            if miner.get('status') == 'running':
-                print(f'Stopping miner: {name}')
-                mining_manager.stop_miner(name)
-        print('Server stopped gracefully')
+        try:
+            for name, miner in mining_manager.miners.items():
+                if miner.get('status') == 'running':
+                    print(f'   Stopping miner: {name}')
+                    mining_manager.stop_miner(name)
+        except Exception as e:
+            print(f'   Error stopping miners: {e}')
+        
+        print('✅ Server stopped gracefully')
         sys.exit(0)
     
+    # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Register cleanup on exit
+    def cleanup():
+        if not shutdown_flag:
+            print('\n🔧 Cleanup on exit...')
+    
+    atexit.register(cleanup)
     
     print("=" * 60)
     print("🚀 Mining Management API Server")

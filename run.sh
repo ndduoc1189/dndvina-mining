@@ -38,8 +38,18 @@ if [ ! -f "app.py" ]; then
     exit 1
 fi
 
-echo "✅ Starting server from: $SCRIPT_DIR/app.py"
+# Use wrapper for better signal handling
+if [ -f "server.py" ]; then
+    PYTHON_CMD="python3 server.py"
+    echo "✅ Starting server from: $SCRIPT_DIR/server.py (wrapper)"
+else
+    PYTHON_CMD="python3 app.py"
+    echo "✅ Starting server from: $SCRIPT_DIR/app.py"
+fi
 echo ""
+
+# Trap SIGINT (Ctrl+C) for clean shutdown
+trap 'echo ""; echo "🛑 Received Ctrl+C, stopping server..."; exit 0' INT
 
 # Simple auto-restart loop
 while true; do
@@ -48,14 +58,14 @@ while true; do
     echo "========================================="
     
     # Run the server and show output directly
-    python3 app.py
+    $PYTHON_CMD
     
     EXIT_CODE=$?
     echo ""
     echo "Server stopped with exit code: $EXIT_CODE at $(date)"
     
-    # If exit code is 0, it was intentional shutdown
-    if [ $EXIT_CODE -eq 0 ]; then
+    # If exit code is 0 or 130 (Ctrl+C), it was intentional shutdown
+    if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 130 ]; then
         echo "Clean shutdown detected. Exiting."
         break
     fi

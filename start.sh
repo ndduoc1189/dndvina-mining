@@ -43,7 +43,11 @@ if ! python3 -c "import flask, psutil, requests" 2>/dev/null; then
     exit 1
 fi
 
-# Start server
-echo "✅ Starting server..."
-echo ""
-python3 app.py
+# Use wrapper for better signal handling
+if [ -f "server.py" ]; then
+    echo "✅ Starting server with wrapper..."
+    python3 server.py
+else
+    echo "✅ Starting server..."
+    python3 app.py
+fi
