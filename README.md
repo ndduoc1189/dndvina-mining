@@ -32,12 +32,25 @@ python app.py
 chmod +x install.sh
 ./install.sh
 
-# Chạy với auto-restart
+# Chạy với auto-restart (recommended)
+chmod +x run.sh
 ./run.sh
+
+# Hoặc chạy trực tiếp một lần
+chmod +x start.sh
+./start.sh
 
 # Hoặc chạy với systemd (nếu đã cài)
 sudo systemctl start mining-manager
 ```
+
+**Lưu ý quan trọng:**
+- Script tự động `cd` vào đúng thư mục, có thể chạy từ bất kỳ đâu:
+  ```bash
+  # Chạy từ thư mục khác vẫn OK
+  bash ~/dndvina-mining/run.sh
+  bash /opt/dndvina-mining/run.sh
+  ```
 
 ## 📁 Cấu trúc deployment
 
@@ -49,8 +62,9 @@ dndvina-mining/
 ├── README.md             # Documentation  
 ├── .gitignore           # Git ignore file
 ├── start_server.bat     # Windows start script
-├── run.sh              # Ubuntu auto-restart script
-├── install.sh          # Ubuntu install script
+├── start.sh            # Linux quick start (single run)
+├── run.sh              # Linux auto-restart script
+├── install.sh          # Linux install script
 └── miners/             # Auto-created (ignored by git)
     ├── ethereum/
     ├── bitcoin/
@@ -672,9 +686,23 @@ curl -X POST http://localhost:9098/api/update-config \
   -H "Content-Type: application/json" \
   -d @miners-config.json
 
-# 4. Start with systemd
+# 4. Start with auto-restart
+chmod +x run.sh
+./run.sh
+
+# Or start with systemd (recommended for production)
 sudo systemctl start mining-manager
 sudo systemctl enable mining-manager  # Auto-start on boot
+```
+
+**Alternative: Run from anywhere**
+```bash
+# Script tự động cd vào đúng thư mục
+bash ~/dndvina-mining/run.sh
+bash /opt/dndvina-mining/run.sh
+
+# Quick start (single run, no auto-restart)
+bash ~/dndvina-mining/start.sh
 ```
 
 ### Windows Server
