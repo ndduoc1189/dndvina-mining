@@ -131,6 +131,7 @@ dmypy.json
 # Mining specific ignores
 miners/
 mining_config.json
+mining_manager.pid
 *.log
 *.exe
 *.dll

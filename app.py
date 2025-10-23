@@ -1350,6 +1350,37 @@ def health_check():
         'timestamp': datetime.now().isoformat()
     })
 
+@app.route('/api/server/info', methods=['GET'])
+def get_server_info():
+    """Get server information including PID and uptime"""
+    try:
+        pid_file = 'mining_manager.pid'
+        server_pid = None
+        
+        if os.path.exists(pid_file):
+            with open(pid_file, 'r') as f:
+                server_pid = int(f.read().strip())
+        
+        # Get process info
+        proc = psutil.Process(server_pid or os.getpid())
+        
+        return jsonify({
+            'success': True,
+            'server_pid': server_pid or os.getpid(),
+            'uptime_seconds': time.time() - proc.create_time(),
+            'cpu_percent': proc.cpu_percent(interval=0.1),
+            'memory_mb': proc.memory_info().rss / 1024 / 1024,
+            'num_threads': proc.num_threads(),
+            'config': {
+                'host': config.SERVER_HOST,
+                'port': config.SERVER_PORT,
+                'auto_start_enabled': config.AUTO_START_ON_BOOT,
+                'monitor_logs_enabled': config.ENABLE_MONITOR_LOGS
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/debug/output/<miner_name>', methods=['GET'])
 def get_miner_output(miner_name):
     """Get raw output from miner for debugging"""
@@ -1426,6 +1457,70 @@ def get_auto_start_config():
 if __name__ == '__main__':
     import signal
     import sys
+    import atexit
+    
+    # PID file để đảm bảo chỉ chạy 1 instance
+    PID_FILE = 'mining_manager.pid'
+    
+    def check_already_running():
+        """Check if another instance is already running"""
+        if os.path.exists(PID_FILE):
+            try:
+                with open(PID_FILE, 'r') as f:
+                    old_pid = int(f.read().strip())
+                
+                # Check if process is still running
+                try:
+                    # Check if PID exists
+                    proc = psutil.Process(old_pid)
+                    # Check if it's actually our app
+                    if 'python' in proc.name().lower() and 'app.py' in ' '.join(proc.cmdline()):
+                        print("=" * 60)
+                        print("⚠️  CẢNH BÁO: Ứng dụng đang chạy!")
+                        print("=" * 60)
+                        print(f"PID: {old_pid}")
+                        print(f"Command: {' '.join(proc.cmdline())}")
+                        print(f"\nĐể dừng server hiện tại:")
+                        print(f"  kill {old_pid}              # Linux")
+                        print(f"  taskkill /F /PID {old_pid}  # Windows")
+                        print(f"\nHoặc xóa file lock nếu process đã chết:")
+                        print(f"  rm {PID_FILE}")
+                        print("=" * 60)
+                        return True
+                except psutil.NoSuchProcess:
+                    # Process không tồn tại, xóa PID file cũ
+                    print(f"⚠️  Tìm thấy PID file cũ (process {old_pid} đã chết), cleaning up...")
+                    os.remove(PID_FILE)
+            except (ValueError, IOError) as e:
+                print(f"⚠️  PID file lỗi, removing: {e}")
+                os.remove(PID_FILE)
+        
+        return False
+    
+    def create_pid_file():
+        """Create PID file with current process ID"""
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        print(f"✅ Created PID file: {PID_FILE} (PID: {os.getpid()})")
+    
+    def remove_pid_file():
+        """Remove PID file on exit"""
+        try:
+            if os.path.exists(PID_FILE):
+                os.remove(PID_FILE)
+                print(f"🗑️  Removed PID file: {PID_FILE}")
+        except Exception as e:
+            print(f"⚠️  Error removing PID file: {e}")
+    
+    # Check if already running
+    if check_already_running():
+        sys.exit(1)
+    
+    # Create PID file
+    create_pid_file()
+    
+    # Register cleanup
+    atexit.register(remove_pid_file)
     
     # Simple signal handler
     def signal_handler(sig, frame):
@@ -1442,6 +1537,8 @@ if __name__ == '__main__':
         except Exception as e:
             print(f'⚠️  Error stopping miners: {e}')
         
+        # Remove PID file
+        remove_pid_file()
         print('✅ Server stopped\n')
         sys.exit(0)
     

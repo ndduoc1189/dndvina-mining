@@ -438,9 +438,30 @@ function formatHashRate(hashRateInHS) {
 
 ---
 
-### 9️⃣ Debug Endpoints
+### 9️⃣ Server Info & Debug Endpoints
 
-#### 9.1 Xem raw output của miner
+#### 9.1 Lấy thông tin server
+**GET** `/api/server/info`
+
+##### Response
+```json
+{
+  "success": true,
+  "server_pid": 12345,
+  "uptime_seconds": 3600,
+  "cpu_percent": 0.5,
+  "memory_mb": 125.4,
+  "num_threads": 8,
+  "config": {
+    "host": "0.0.0.0",
+    "port": 9098,
+    "auto_start_enabled": true,
+    "monitor_logs_enabled": true
+  }
+}
+```
+
+#### 9.2 Xem raw output của miner
 **GET** `/api/debug/output/{miner_name}`
 
 ##### Response
@@ -777,6 +798,7 @@ curl http://localhost:9098/api/debug/output/vrsc-main
 ## 🎯 Lợi ích
 
 ✅ **API-First Design** - RESTful JSON API cho mọi platform  
+✅ **Single Instance** - PID lock đảm bảo chỉ chạy 1 server duy nhất  
 ✅ **Auto-Download** - Tự động tải mining tools từ CDN  
 ✅ **Multi-Coin Support** - Đào nhiều coin đồng thời  
 ✅ **Smart Hash Rate** - Auto-detect patterns cho từng tool  
@@ -792,8 +814,30 @@ curl http://localhost:9098/api/debug/output/vrsc-main
 ## 🛠️ Troubleshooting
 
 ### Server không khởi động
+
+**Lỗi: "Ứng dụng đang chạy!"**
 ```bash
-# Check port conflict
+⚠️  CẢNH BÁO: Ứng dụng đang chạy!
+PID: 12345
+```
+
+**Giải pháp:**
+```bash
+# Option 1: Kill process đang chạy
+kill 12345              # Linux
+taskkill /F /PID 12345  # Windows
+
+# Option 2: Xóa PID lock nếu process đã chết
+rm mining_manager.pid   # Linux
+del mining_manager.pid  # Windows
+
+# Check server info
+curl http://localhost:9098/api/server/info
+```
+
+**Port conflict:**
+```bash
+# Check port 9098
 netstat -ano | findstr :9098  # Windows
 lsof -i :9098                 # Linux
 
