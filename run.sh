@@ -38,14 +38,7 @@ if [ ! -f "app.py" ]; then
     exit 1
 fi
 
-# Use wrapper for better signal handling
-if [ -f "server.py" ]; then
-    PYTHON_CMD="python3 server.py"
-    echo "✅ Starting server from: $SCRIPT_DIR/server.py (wrapper)"
-else
-    PYTHON_CMD="python3 app.py"
-    echo "✅ Starting server from: $SCRIPT_DIR/app.py"
-fi
+echo "✅ Starting server from: $SCRIPT_DIR/app.py"
 echo ""
 
 # Trap SIGINT (Ctrl+C) for clean shutdown
@@ -58,7 +51,7 @@ while true; do
     echo "========================================="
     
     # Run the server and show output directly
-    $PYTHON_CMD
+    python3 app.py
     
     EXIT_CODE=$?
     echo ""

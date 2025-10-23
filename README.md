@@ -56,8 +56,7 @@ sudo systemctl start mining-manager
 
 ```
 dndvina-mining/
-├── app.py                 # Server chính
-├── server.py              # Wrapper cho graceful shutdown
+├── app.py                 # Server chính (Flask API + Mining Manager)
 ├── config.py              # Cấu hình tập trung (logs, server, timeouts)
 ├── requirements.txt       # Dependencies
 ├── README.md             # Documentation  
@@ -71,10 +70,6 @@ dndvina-mining/
     ├── bitcoin/
     └── vrsc/
 ```
-
-**Files mới:**
-- `server.py`: Wrapper script xử lý Ctrl+C gracefully, tránh traceback khi interrupt
-- Script tự động dùng `server.py` nếu có, fallback về `app.py`
 
 ## ⚙️ Configuration (config.py)
 
@@ -807,24 +802,26 @@ cat server.log               # Ubuntu
 type server.log              # Windows
 ```
 
-### Ctrl+C không hoạt động gracefully
-**Giải pháp:**
-- Script tự động dùng `server.py` wrapper để xử lý signal tốt hơn
-- Nếu bị traceback, nhấn Ctrl+C lần nữa để force stop
-- Hoặc dùng: `killall python3` (Linux) / `taskkill /F /IM python.exe` (Windows)
-
+### Ctrl+C không hoạt động
 **Expected behavior:**
 ```bash
-# Lần 1: Graceful shutdown
 ^C
-🛑 Đang tắt Server Quản lý Mining...
-   (Nhấn Ctrl+C lần nữa để force stop)
-   Stopping miner: vrsc-main
-✅ Server stopped gracefully
 
-# Lần 2: Force stop
-^C
-⚠️  Force stopping...
+🛑 Stopping server...
+✅ Stopped miners: vrsc-main, dero-cpu
+✅ Server stopped
+```
+
+**Nếu server không phản hồi:**
+```bash
+# Linux
+killall python3
+# hoặc
+ps aux | grep app.py
+kill -9 <PID>
+
+# Windows
+taskkill /F /IM python.exe
 ```
 
 ### File mining không tải được
