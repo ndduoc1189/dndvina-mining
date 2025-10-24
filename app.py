@@ -1062,16 +1062,25 @@ mining_manager = MiningManager()
 @app.route('/api/update-config', methods=['POST'])
 def update_config():
     """Update mining configuration
-    Expected payload: [
+    Expected payload (Array of coin configs - no "name" field, use coin_name as identifier):
+    [
         {
-            "name": "miner1",
-            "coin_name": "ethereum",
+            "coin_name": "vrsc",
             "mining_tool": "ccminer",
-            "config": {"key": "value"},
-            "required_files": ["ccminer.exe", "libcrypto-1_1-x64.dll"], // optional
-            "auto_start": true  // optional
+            "config": {"pools": [...], "user": "...", "algo": "verus"},  // Object or String
+            "required_files": ["ccminer"],
+            "auto_start": false
+        },
+        {
+            "coin_name": "dero",
+            "mining_tool": "astrominer",
+            "config": "-w WALLET -r POOL:PORT -m 8",  // String for CLI params
+            "required_files": ["astrominer"],
+            "auto_start": true
         }
     ]
+    
+    Note: Multiple miners can mine the same coin with different configs by posting multiple times.
     Query params: ?stop_all_first=true (to stop all miners before update)
     """
     try:
@@ -1079,7 +1088,7 @@ def update_config():
         stop_all_first = request.args.get('stop_all_first', 'false').lower() == 'true'
         
         if not isinstance(data, list):
-            return jsonify({'success': False, 'message': 'Yêu cầu mảng các cấu hình miner'}), 400
+            return jsonify({'success': False, 'message': 'Config phải là array của các coin configs'}), 400
         
         # Option to stop all miners first
         if stop_all_first:
@@ -1112,31 +1121,51 @@ def update_config():
         
         results = []
         for miner_config in data:
-            required_fields = ['name', 'coin_name', 'mining_tool', 'config']
-            if not all(key in miner_config for key in required_fields):
+            # Validate required fields (no "name" field, use coin_name as identifier)
+            required_fields = ['coin_name', 'mining_tool', 'config']
+            missing_fields = [f for f in required_fields if f not in miner_config]
+            
+            coin_name = miner_config.get('coin_name', 'unknown')
+            
+            if missing_fields:
                 results.append({
-                    'name': miner_config.get('name', 'unknown'),
+                    'coin_name': coin_name,
                     'success': False,
-                    'message': 'Thiếu các trường bắt buộc: name, coin_name, mining_tool, config'
+                    'message': f'Thiếu các trường bắt buộc: {", ".join(missing_fields)}'
+                })
+                continue
+            
+            # Validate config type (must be dict or string)
+            config = miner_config['config']
+            if not isinstance(config, (dict, str)):
+                results.append({
+                    'coin_name': coin_name,
+                    'success': False,
+                    'message': 'Field "config" phải là object (JSON) hoặc string (CLI params)'
                 })
                 continue
             
             success, message = mining_manager.update_miner_config(
-                miner_config['name'],
-                miner_config['coin_name'],
+                coin_name,  # Use coin_name as the identifier
+                coin_name,
                 miner_config['mining_tool'],
-                miner_config['config'],
+                config,
                 miner_config.get('required_files'),
                 miner_config.get('auto_start', False)
             )
             
             results.append({
-                'name': miner_config['name'],
+                'coin_name': coin_name,
                 'success': success,
                 'message': message
             })
         
-        return jsonify({'success': True, 'results': results})
+        return jsonify({
+            'success': True,
+            'updated': len([r for r in results if r['success']]),
+            'total': len(results),
+            'results': results
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500

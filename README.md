@@ -136,13 +136,13 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 - **Global stop**: Thêm `?stop_all_first=true` để stop ALL miners trước
 - **Safe updates**: Không conflict khi update config
 
-#### Request Body - Option 1: JSON Config File
+#### Request Body (Array of Coin Configs)
+
 ```json
 [
   {
-    "name": "vrsc-gpu1",
     "coin_name": "vrsc",
-    "mining_tool": "ccminer", 
+    "mining_tool": "ccminer",
     "config": {
       "pools": [
         {
@@ -157,31 +157,76 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
       "threads": 8,
       "cpu-priority": 1
     },
-    "required_files": ["ccminer.exe", "libcrypto-1_1-x64.dll"],
+    "required_files": ["ccminer"],
+    "auto_start": false
+  },
+  {
+    "coin_name": "dero",
+    "mining_tool": "astrominer",
+    "config": "-w deroi1qyzlxxgq2weyqlxg5u4tkng2lf5rktwanqhse2hwm577ps22zv2x2q9pvfz92 -r dero.rabidmining.com:10300 -m 8",
+    "required_files": ["astrominer"],
     "auto_start": true
   }
 ]
 ```
 
-#### Request Body - Option 2: Command Line Parameters
-```json
-[
-  {
-    "name": "dero-miner",
-    "coin_name": "dero",
-    "mining_tool": "astrominer",
-    "config": "-w deroi1qyzlxxgq2weyqlxg5u4tkng2lf5rktwanqhse2hwm577ps22zv2x2q9pvfz92 -r dero.rabidmining.com:10300 -m 8",
-    "required_files": ["astrominer"],
-    "auto_start": false
-  }
-]
-```
+**Required Fields per Coin:**
+- `coin_name`: String - **Coin identifier used as miner name** (vrsc, dero, eth, etc.)
+- `mining_tool`: String - Mining software (ccminer, astrominer, xmrig, etc.)
+- `config`: Object | String - **Mining config (JSON object or CLI string)**
+- `required_files`: Array - Files to download from CDN
+- `auto_start`: Boolean - Enable auto-start on boot (default: false)
+
+**Config Types:**
+1. **JSON Object** - For tools supporting config files (ccminer, xmrig):
+   ```json
+   "config": {"pools": [...], "user": "...", "algo": "verus"}
+   ```
+
+2. **CLI String** - For tools using command-line args (astrominer):
+   ```json
+   "config": "-w WALLET -r POOL:PORT -m 8"
+   ```
 
 #### Response
 ```json
 {
   "success": true,
-  "message": "Cập nhật cấu hình thành công cho 2 miner(s)"
+  "updated": 2,
+  "total": 2,
+  "results": [
+    {
+      "coin_name": "vrsc",
+      "success": true,
+      "message": "Cập nhật cấu hình thành công"
+    },
+    {
+      "coin_name": "dero",
+      "success": true,
+      "message": "Cập nhật cấu hình thành công"
+    }
+  ]
+}
+```
+
+**Partial Success Response:**
+```json
+{
+  "success": true,
+  "updated": 1,
+  "total": 2,
+  "results": [
+    {
+      "coin_name": "vrsc",
+      "success": false,
+      "message": "Thiếu các trường bắt buộc: config"
+    },
+    {
+      "coin_name": "dero",
+      "success": true,
+      "message": "Cập nhật cấu hình thành công"
+    }
+  ]
 }
 ```
 
@@ -215,7 +260,7 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 #### Request Body
 ```json
 {
-  "name": "vrsc-gpu1"
+  "name": "vrsc"
 }
 ```
 
@@ -223,7 +268,7 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 ```json
 {
   "success": true,
-  "message": "Bắt đầu đào vrsc-gpu1 thành công",
+  "message": "Bắt đầu đào vrsc thành công",
   "pid": 12345
 }
 ```
@@ -244,14 +289,14 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 #### Request Body - Single Miner
 ```json
 {
-  "name": "vrsc-gpu1"
+  "name": "vrsc"
 }
 ```
 
 #### Request Body - Multiple Miners
 ```json
 {
-  "names": ["vrsc-gpu1", "dero-miner", "btc-miner"]
+  "names": ["vrsc", "dero", "btc"]
 }
 ```
 
@@ -260,7 +305,7 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 {
   "success": true,
   "message": "Đã dừng 3 miner(s) thành công",
-  "stopped": ["vrsc-gpu1", "dero-miner", "btc-miner"]
+  "stopped": ["vrsc", "dero", "btc"]
 }
 ```
 
@@ -311,7 +356,7 @@ ENABLE_MONITOR_LOGS = False  # Không hiển thị "[THEO DÕI] === Trạng thá
 ```json
 {
   "success": true,
-  "name": "vrsc-gpu1",
+  "name": "vrsc",
   "status": "running",
   "pid": 12345,
   "start_time": "2025-10-16T08:00:00",
@@ -360,7 +405,7 @@ function formatHashRate(hashRateInHS) {
   "miners": [
     {
       "success": true,
-      "name": "vrsc-gpu1",
+      "name": "vrsc",
       "status": "running",
       "pid": 12345,
       "hash_rate": 50500000,
@@ -370,7 +415,7 @@ function formatHashRate(hashRateInHS) {
     },
     {
       "success": true,
-      "name": "dero-miner",
+      "name": "dero",
       "status": "stopped",
       "pid": null,
       "hash_rate": 0,
@@ -381,6 +426,12 @@ function formatHashRate(hashRateInHS) {
   ]
 }
 ```
+
+**⚠️ Lưu ý quan trọng:**
+- API **KHÔNG** tính tổng hash rate (`totalHashRate`)
+- Mỗi miner đào coin khác nhau → hash rate không thể cộng lại
+- VD: 50 MH/s VRSC + 1 KH/s DERO không có ý nghĩa
+- Client tự quyết định hiển thị từng miner riêng lẻ
 
 ---
 
@@ -396,7 +447,7 @@ function formatHashRate(hashRateInHS) {
   "global_enabled": true,
   "auto_start_miners": [
     {
-      "name": "vrsc-gpu1",
+      "name": "vrsc",
       "coin_name": "vrsc",
       "mining_tool": "ccminer",
       "status": "running"
@@ -468,7 +519,7 @@ function formatHashRate(hashRateInHS) {
 ```json
 {
   "success": true,
-  "name": "dero-miner",
+  "name": "dero",
   "output": "[dero] 16-10-2025 08:14:42 [pool] Accepted 318 | Hashrate 1.055KH/s\n[dero] Connected to pool..."
 }
 ```
@@ -612,7 +663,7 @@ curl -X POST http://localhost:9098/api/force-stop-all
 
 ### Example 1: Setup VRSC Mining
 ```bash
-# 1. Update config với auto-start
+# 1. Update config (JSON config type)
 curl -X POST http://localhost:9098/api/update-config \
   -H "Content-Type: application/json" \
   -d '[
@@ -632,7 +683,7 @@ curl -X POST http://localhost:9098/api/update-config \
         "algo": "verus",
         "threads": 8
       },
-      "required_files": ["ccminer.exe", "libcrypto-1_1-x64.dll"],
+      "required_files": ["ccminer"],
       "auto_start": true
     }
   ]'
@@ -646,7 +697,7 @@ curl -X POST http://localhost:9098/api/start \
 curl http://localhost:9098/api/status?name=vrsc-main
 ```
 
-### Example 2: Setup DERO Mining (CLI Parameters)
+### Example 2: Setup DERO Mining (CLI String)
 ```bash
 curl -X POST http://localhost:9098/api/update-config \
   -H "Content-Type: application/json" \
@@ -662,6 +713,30 @@ curl -X POST http://localhost:9098/api/update-config \
   ]'
 ```
 
+### Example 2b: Setup Multiple Coins at Once
+```bash
+curl -X POST http://localhost:9098/api/update-config \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "name": "vrsc-gpu1",
+      "coin_name": "vrsc",
+      "mining_tool": "ccminer",
+      "config": {"pools": [...], "user": "...", "algo": "verus"},
+      "required_files": ["ccminer"],
+      "auto_start": true
+    },
+    {
+      "name": "dero-cpu",
+      "coin_name": "dero",
+      "mining_tool": "astrominer",
+      "config": "-w WALLET -r POOL:PORT -m 8",
+      "required_files": ["astrominer"],
+      "auto_start": true
+    }
+  ]'
+```
+
 ### Example 3: Monitor Hash Rates
 ```python
 import requests
@@ -671,6 +746,10 @@ api = 'http://localhost:9098'
 
 while True:
     res = requests.get(f'{api}/api/status').json()
+    
+    print("\n" + "="*60)
+    print("MINING STATUS")
+    print("="*60)
     
     for miner in res['miners']:
         if miner['status'] == 'running':
@@ -683,9 +762,34 @@ while True:
             else:
                 hr_str = f"{hr:.2f} H/s"
             
-            print(f"{miner['name']}: {hr_str} (PID: {miner['pid']})")
+            # Show each miner separately - DON'T sum different coins
+            print(f"[{miner['coin_name'].upper()}] {miner['name']}")
+            print(f"  Hash Rate: {hr_str}")
+            print(f"  Tool: {miner['mining_tool']}")
+            print(f"  PID: {miner['pid']}")
+            print()
+    
+    # ❌ WRONG: Don't do this
+    # total_hash = sum(m['hash_rate'] for m in res['miners'] if m['status'] == 'running')
+    # Different coins, can't sum!
     
     time.sleep(10)
+```
+
+**Output:**
+```
+============================================================
+MINING STATUS
+============================================================
+[VRSC] vrsc-gpu1
+  Hash Rate: 50.50 MH/s
+  Tool: ccminer
+  PID: 12345
+
+[DERO] dero-miner
+  Hash Rate: 1.08 KH/s
+  Tool: astrominer
+  PID: 12346
 ```
 
 ---
