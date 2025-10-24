@@ -139,13 +139,11 @@ class MiningManager:
         """Update miner configuration with auto-download support"""
         try:
             # Check if miner exists and is running - stop it first
-            need_restart = False
             if name in self.miners and self.miners[name].get('status') == 'running':
                 print(f"[CẬP NHẬT] Miner {name} đang chạy, dừng lại để cập nhật...")
                 stop_result = self.stop_miner(name)
                 if stop_result['success']:
                     print(f"[CẬP NHẬT] Đã dừng {name} thành công")
-                    need_restart = auto_start  # Only restart if auto_start is enabled
                 else:
                     print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
                     # Continue with config update anyway
@@ -186,18 +184,7 @@ class MiningManager:
             
             config_saved = self.save_config()
             
-            # Restart miner if it was running and auto_start is enabled
-            if need_restart:
-                print(f"[CẬP NHẬT] Đang khởi động lại {name} sau khi cập nhật cấu hình...")
-                time.sleep(2)  # Small delay before restart
-                start_result = self.start_miner(name)
-                if start_result['success']:
-                    print(f"[CẬP NHẬT] Đã khởi động lại {name} thành công")
-                    return config_saved, f"Đã cập nhật cấu hình và khởi động lại {name} thành công"
-                else:
-                    print(f"[CẬP NHẬT] Không thể khởi động lại {name}: {start_result['message']}")
-                    return config_saved, f"Đã cập nhật cấu hình nhưng không thể khởi động lại {name}: {start_result['message']}"
-            
+            # Config updated - user needs to call /api/start to run the miner
             return config_saved, "Cập nhật cấu hình thành công"
             
         except Exception as e:
