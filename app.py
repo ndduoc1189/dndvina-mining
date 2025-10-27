@@ -33,7 +33,7 @@ class MiningManager:
         self.base_download_url = config.CDN_BASE_URL + "/"
         self.miners_dir = config.MINERS_DIR
         self.auto_start_enabled = config.AUTO_START_ON_BOOT
-        self.last_sync_config = None  # Global last sync timestamp
+        self.last_sync_config = "2025-01-01T00:00:00Z"  # Default to oldest date for initial sync
         self.load_config()
         
         # Ensure miners directory exists
@@ -65,26 +65,26 @@ class MiningManager:
                     
                     # Support new format: {last_sync_config, auto_start, miners}
                     if isinstance(data, dict) and 'miners' in data:
-                        self.last_sync_config = data.get('last_sync_config')
+                        self.last_sync_config = data.get('last_sync_config') or "2025-01-01T00:00:00Z"
                         self.auto_start_enabled = data.get('auto_start', config.AUTO_START_ON_BOOT)
                         self.miners = data.get('miners', {})
                     else:
-                        # Old format: direct miners object
+                        # Old format: direct miners object - set oldest date to trigger update
                         self.miners = data
-                        self.last_sync_config = None
+                        self.last_sync_config = "2025-01-01T00:00:00Z"
             except Exception as e:
                 self.log_info(f"Lỗi khi tải config: {e}")
                 self.miners = {}
-                self.last_sync_config = None
+                self.last_sync_config = "2025-01-01T00:00:00Z"
         else:
             self.miners = {}
-            self.last_sync_config = None
+            self.last_sync_config = "2025-01-01T00:00:00Z"
     
     def save_config(self):
         """Save mining configuration to file in new format"""
         try:
             config_data = {
-                'last_sync_config': self.last_sync_config,
+                'last_sync_config': self.last_sync_config or "2025-01-01T00:00:00Z",
                 'auto_start': self.auto_start_enabled,
                 'miners': self.miners
             }
@@ -911,7 +911,7 @@ class MiningManager:
         
         return {
             'success': True,
-            'last_sync_config': self.last_sync_config,
+            'last_sync_config': self.last_sync_config or "2025-01-01T00:00:00Z",
             'auto_start': self.auto_start_enabled,  # Global auto-start flag
             'miners': status_list
         }
