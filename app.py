@@ -1186,11 +1186,58 @@ def update_config():
         # Save config with new format
         mining_manager.save_config()
         
+        # Auto-start miners if global auto_start flag is enabled
+        auto_start_result = None
+        if mining_manager.auto_start_enabled:
+            print("[CẬP NHẬT] auto_start=true, đang stop và restart tất cả miners...")
+            
+            # Step 1: Stop all running miners first
+            stopped_miners = []
+            for name, miner in mining_manager.miners.items():
+                if miner.get('status') == 'running':
+                    print(f"[CẬP NHẬT] Đang dừng {name}...")
+                    stop_result = mining_manager.stop_miner(name)
+                    stopped_miners.append({'name': name, 'stopped': stop_result['success']})
+            
+            if stopped_miners:
+                print(f"[CẬP NHẬT] Đã dừng {len(stopped_miners)} miners, chờ 3 giây...")
+                time.sleep(3)
+                
+                # Force kill to ensure clean state
+                active_tools = mining_manager.get_active_mining_tools()
+                if active_tools:
+                    kill_count = mining_manager.kill_all_miners_by_name(active_tools)
+                    print(f"[CẬP NHẬT] Force killed {kill_count} processes")
+                    time.sleep(2)
+            
+            # Step 2: Start all miners
+            print("[CẬP NHẬT] Đang khởi động lại tất cả miners...")
+            started_miners = []
+            for name in mining_manager.miners.keys():
+                result = mining_manager.start_miner(name)
+                started_miners.append({
+                    'name': name,
+                    'started': result['success'],
+                    'message': result.get('message', '')
+                })
+                if result['success']:
+                    print(f"[CẬP NHẬT] ✅ Đã khởi động {name}")
+                else:
+                    print(f"[CẬP NHẬT] ❌ Không thể khởi động {name}: {result['message']}")
+                time.sleep(2)  # Delay between starts
+            
+            auto_start_result = {
+                'stopped': stopped_miners,
+                'started': started_miners
+            }
+        
         return jsonify({
             'success': True,
             'updated': len([r for r in results if r['success']]),
             'total': len(results),
             'last_sync_config': mining_manager.last_sync_config,
+            'auto_start_enabled': mining_manager.auto_start_enabled,
+            'auto_start_result': auto_start_result,
             'results': results
         })
         

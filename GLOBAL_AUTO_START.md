@@ -66,6 +66,32 @@ if config['auto_start'] == true:
 }
 ```
 
+**Response mới:**
+```json
+{
+  "success": true,
+  "updated": 2,
+  "total": 2,
+  "last_sync_config": "2025-10-27T12:00:00Z",
+  "auto_start_enabled": true,
+  "auto_start_result": {
+    "stopped": [
+      {"name": "vrsc", "stopped": true},
+      {"name": "dero", "stopped": true}
+    ],
+    "started": [
+      {"name": "vrsc", "started": true, "message": "Miner vrsc started"},
+      {"name": "dero", "started": true, "message": "Miner dero started"}
+    ]
+  },
+  "results": [...]
+}
+```
+
+**Hành vi:**
+- ✅ Nếu `auto_start: true` → Stop tất cả miners cũ → Start lại TẤT CẢ miners mới
+- ❌ Nếu `auto_start: false` → Chỉ update config, không start
+
 #### GET `/api/status`
 **Response mới:**
 ```json
@@ -87,14 +113,36 @@ if config['auto_start'] == true:
 
 ### 4. **Hành Vi Khi App Khởi Động**
 
-#### Scenario 1: `auto_start: true`
+#### Scenario 1: `auto_start: true` khi boot app
 ```
 App Boot → 5 giây chờ → Tự động start TẤT CẢ miners (vrsc + dero)
 ```
 
-#### Scenario 2: `auto_start: false`
+#### Scenario 2: `auto_start: false` khi boot app
 ```
 App Boot → 5 giây chờ → KHÔNG start miners nào
+```
+
+#### Scenario 3: `auto_start: true` khi update config
+```
+POST /api/update-config với auto_start=true
+  ↓
+Stop tất cả miners đang chạy
+  ↓
+Chờ 3 giây + Force kill
+  ↓
+Start lại TẤT CẢ miners
+  ↓
+Response với auto_start_result (stopped/started miners)
+```
+
+#### Scenario 4: `auto_start: false` khi update config
+```
+POST /api/update-config với auto_start=false
+  ↓
+Chỉ update config
+  ↓
+KHÔNG start miners
 ```
 
 ### 5. **Files Đã Sửa**
