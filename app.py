@@ -33,6 +33,7 @@ class MiningManager:
         self.base_download_url = config.CDN_BASE_URL + "/"
         self.miners_dir = config.MINERS_DIR
         self.auto_start_enabled = config.AUTO_START_ON_BOOT
+        self.last_sync_config = None  # Global last sync timestamp
         self.load_config()
         
         # Ensure miners directory exists
@@ -60,18 +61,35 @@ class MiningManager:
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    self.miners = json.load(f)
+                    data = json.load(f)
+                    
+                    # Support new format: {last_sync_config, auto_start, miners}
+                    if isinstance(data, dict) and 'miners' in data:
+                        self.last_sync_config = data.get('last_sync_config')
+                        self.auto_start_enabled = data.get('auto_start', config.AUTO_START_ON_BOOT)
+                        self.miners = data.get('miners', {})
+                    else:
+                        # Old format: direct miners object
+                        self.miners = data
+                        self.last_sync_config = None
             except Exception as e:
                 self.log_info(f"Lỗi khi tải config: {e}")
                 self.miners = {}
+                self.last_sync_config = None
         else:
             self.miners = {}
+            self.last_sync_config = None
     
     def save_config(self):
-        """Save mining configuration to file"""
+        """Save mining configuration to file in new format"""
         try:
+            config_data = {
+                'last_sync_config': self.last_sync_config,
+                'auto_start': self.auto_start_enabled,
+                'miners': self.miners
+            }
             with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.miners, f, indent=2, ensure_ascii=False)
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
             print(f"Lỗi khi lưu config: {e}")
@@ -881,6 +899,7 @@ class MiningManager:
             'coin_name': miner.get('coin_name', ''),
             'mining_tool': miner.get('mining_tool', ''),
             'auto_start': miner.get('auto_start', False),
+            'last_sync_config': self.last_sync_config,  # Global last sync timestamp
             'last_output': miner['last_output'][-1000:] if miner['last_output'] else ''  # Last 1000 chars
         }
     
@@ -892,7 +911,11 @@ class MiningManager:
             if status['success']:
                 status_list.append(status)
         
-        return {'success': True, 'miners': status_list}
+        return {
+            'success': True,
+            'last_sync_config': self.last_sync_config,
+            'miners': status_list
+        }
     
     def _monitor_miner(self, name):
         """Monitor mining process output for hash rate"""
@@ -1049,33 +1072,48 @@ mining_manager = MiningManager()
 @app.route('/api/update-config', methods=['POST'])
 def update_config():
     """Update mining configuration
-    Expected payload (Array of coin configs - no "name" field, use coin_name as identifier):
-    [
-        {
-            "coin_name": "vrsc",
-            "mining_tool": "ccminer",
-            "config": {"pools": [...], "user": "...", "algo": "verus"},  // Object or String
-            "required_files": ["ccminer"],
-            "auto_start": false
-        },
-        {
-            "coin_name": "dero",
-            "mining_tool": "astrominer",
-            "config": "-w WALLET -r POOL:PORT -m 8",  // String for CLI params
-            "required_files": ["astrominer"],
-            "auto_start": true
-        }
-    ]
+    Expected payload (New format with wrapper object):
+    {
+        "last_sync_config": "2025-10-27T10:30:00Z",  // ISO timestamp or Unix timestamp
+        "auto_start": true,  // Global auto-start on server boot
+        "miners": [
+            {
+                "coin_name": "vrsc",
+                "mining_tool": "ccminer",
+                "config": {"pools": [...], "user": "...", "algo": "verus"},
+                "required_files": ["ccminer"]
+            },
+            {
+                "coin_name": "dero",
+                "mining_tool": "astrominer",
+                "config": "-w WALLET -r POOL:PORT -m 8",
+                "required_files": ["astrominer"]
+            }
+        ]
+    }
     
-    Note: Multiple miners can mine the same coin with different configs by posting multiple times.
     Query params: ?stop_all_first=true (to stop all miners before update)
     """
     try:
         data = request.get_json()
         stop_all_first = request.args.get('stop_all_first', 'false').lower() == 'true'
         
-        if not isinstance(data, list):
-            return jsonify({'success': False, 'message': 'Config phải là array của các coin configs'}), 400
+        # Support both old format (array) and new format (object with miners array)
+        if isinstance(data, dict) and 'miners' in data:
+            # New format
+            miners_list = data.get('miners', [])
+            last_sync_config = data.get('last_sync_config')
+            auto_start_global = data.get('auto_start', True)
+            
+            # Update global settings
+            mining_manager.last_sync_config = last_sync_config
+            mining_manager.auto_start_enabled = auto_start_global
+        elif isinstance(data, list):
+            # Old format (backward compatibility)
+            miners_list = data
+            last_sync_config = None
+        else:
+            return jsonify({'success': False, 'message': 'Config phải là object với field "miners" hoặc array'}), 400
         
         # Option to stop all miners first
         if stop_all_first:
@@ -1107,8 +1145,8 @@ def update_config():
                     time.sleep(3)  # Additional wait after force kill
         
         results = []
-        for miner_config in data:
-            # Validate required fields (no "name" field, use coin_name as identifier)
+        for miner_config in miners_list:
+            # Validate required fields (use coin_name as identifier)
             required_fields = ['coin_name', 'mining_tool', 'config']
             missing_fields = [f for f in required_fields if f not in miner_config]
             
@@ -1147,10 +1185,14 @@ def update_config():
                 'message': message
             })
         
+        # Save config with new format
+        mining_manager.save_config()
+        
         return jsonify({
             'success': True,
             'updated': len([r for r in results if r['success']]),
             'total': len(results),
+            'last_sync_config': mining_manager.last_sync_config,
             'results': results
         })
         

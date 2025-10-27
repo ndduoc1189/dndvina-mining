@@ -1,0 +1,33 @@
+{
+  "last_sync_config": "2025-10-27T12:00:00Z",
+  "auto_start": true,
+  "miners": [
+    {
+      "coin_name": "vrsc",
+      "mining_tool": "ccminer",
+      "config": {
+        "pools": [
+          {
+            "name": "AP",
+            "url": "stratum+tcp://ap.luckpool.net:3956",
+            "timeout": 150,
+            "disabled": 0
+          }
+        ],
+        "user": "RCtqovjA8xLBxdQoHJcepDBd9h6Lh7pPxp.worker1",
+        "algo": "verus",
+        "threads": 8,
+        "cpu-priority": 1
+      },
+      "required_files": ["ccminer"],
+      "auto_start": false
+    },
+    {
+      "coin_name": "dero",
+      "mining_tool": "astrominer",
+      "config": "-w deroi1qyzlxxgq2weyqlxg5u4tkng2lf5rktwanqhse2hwm577ps22zv2x2q9pvfz92 -r dero.rabidmining.com:10300 -m 8",
+      "required_files": ["astrominer"],
+      "auto_start": true
+    }
+  ]
+}
