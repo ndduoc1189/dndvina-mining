@@ -5,7 +5,7 @@
 ### 1. **Cấu trúc Config Mới**
 ```json
 {
-  "last_sync_config": "2025-10-27T12:00:00Z",
+  "last_sync_config": 1730042400,  // ← Unix timestamp (số giây)
   "auto_start": true,  // ← Global flag: tự động khởi động TẤT CẢ miners
   "miners": {
     "vrsc": {
@@ -52,7 +52,7 @@ if config['auto_start'] == true:
 **Request mới:**
 ```json
 {
-  "last_sync_config": "2025-10-27T12:00:00Z",
+  "last_sync_config": 1730042400,
   "auto_start": true,
   "miners": [
     {
@@ -72,7 +72,7 @@ if config['auto_start'] == true:
   "success": true,
   "updated": 2,
   "total": 2,
-  "last_sync_config": "2025-10-27T12:00:00Z",
+  "last_sync_config": 1730042400,
   "auto_start_enabled": true,
   "auto_start_result": {
     "stopped": [

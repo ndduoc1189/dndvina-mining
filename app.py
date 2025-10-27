@@ -26,6 +26,28 @@ if not config.ENABLE_FLASK_ACCESS_LOGS:
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)  # Only show errors, not requests
 
+# Helper function to convert timestamp to Unix timestamp
+def to_unix_timestamp(timestamp_value):
+    """Convert ISO string or Unix timestamp to Unix timestamp (seconds)"""
+    if timestamp_value is None:
+        return int(datetime(2025, 1, 1).timestamp())  # Default: 2025-01-01
+    
+    # If already a number, return as is
+    if isinstance(timestamp_value, (int, float)):
+        return int(timestamp_value)
+    
+    # If string, try to parse
+    if isinstance(timestamp_value, str):
+        try:
+            # Try parsing ISO format
+            dt = datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+            return int(dt.timestamp())
+        except:
+            # Default if parsing fails
+            return int(datetime(2025, 1, 1).timestamp())
+    
+    return int(datetime(2025, 1, 1).timestamp())
+
 class MiningManager:
     def __init__(self):
         self.miners = {}
@@ -33,7 +55,7 @@ class MiningManager:
         self.base_download_url = config.CDN_BASE_URL + "/"
         self.miners_dir = config.MINERS_DIR
         self.auto_start_enabled = config.AUTO_START_ON_BOOT
-        self.last_sync_config = "2025-01-01T00:00:00Z"  # Default to oldest date for initial sync
+        self.last_sync_config = int(datetime(2025, 1, 1).timestamp())  # Default to oldest timestamp
         self.load_config()
         
         # Ensure miners directory exists
@@ -65,26 +87,30 @@ class MiningManager:
                     
                     # Support new format: {last_sync_config, auto_start, miners}
                     if isinstance(data, dict) and 'miners' in data:
-                        self.last_sync_config = data.get('last_sync_config') or "2025-01-01T00:00:00Z"
+                        # Convert to Unix timestamp
+                        self.last_sync_config = to_unix_timestamp(data.get('last_sync_config'))
                         self.auto_start_enabled = data.get('auto_start', config.AUTO_START_ON_BOOT)
                         self.miners = data.get('miners', {})
                     else:
-                        # Old format: direct miners object - set oldest date to trigger update
+                        # Old format: direct miners object - set oldest timestamp to trigger update
                         self.miners = data
-                        self.last_sync_config = "2025-01-01T00:00:00Z"
+                        self.last_sync_config = int(datetime(2025, 1, 1).timestamp())
             except Exception as e:
                 self.log_info(f"Lỗi khi tải config: {e}")
                 self.miners = {}
-                self.last_sync_config = "2025-01-01T00:00:00Z"
+                self.last_sync_config = int(datetime(2025, 1, 1).timestamp())
         else:
             self.miners = {}
-            self.last_sync_config = "2025-01-01T00:00:00Z"
+            self.last_sync_config = int(datetime(2025, 1, 1).timestamp())
     
     def save_config(self):
         """Save mining configuration to file in new format"""
         try:
+            # Ensure last_sync_config is Unix timestamp
+            timestamp = self.last_sync_config if isinstance(self.last_sync_config, (int, float)) else int(datetime(2025, 1, 1).timestamp())
+            
             config_data = {
-                'last_sync_config': self.last_sync_config or "2025-01-01T00:00:00Z",
+                'last_sync_config': int(timestamp),
                 'auto_start': self.auto_start_enabled,
                 'miners': self.miners
             }
@@ -911,7 +937,7 @@ class MiningManager:
         
         return {
             'success': True,
-            'last_sync_config': self.last_sync_config or "2025-01-01T00:00:00Z",
+            'last_sync_config': int(self.last_sync_config) if isinstance(self.last_sync_config, (int, float)) else int(datetime(2025, 1, 1).timestamp()),
             'auto_start': self.auto_start_enabled,  # Global auto-start flag
             'miners': status_list
         }
@@ -1104,8 +1130,8 @@ def update_config():
             last_sync_config = data.get('last_sync_config')
             auto_start_global = data.get('auto_start', True)
             
-            # Update global settings
-            mining_manager.last_sync_config = last_sync_config
+            # Update global settings - convert timestamp to Unix format
+            mining_manager.last_sync_config = to_unix_timestamp(last_sync_config)
             mining_manager.auto_start_enabled = auto_start_global
         elif isinstance(data, list):
             # Old format (backward compatibility)
