@@ -153,7 +153,7 @@ class MiningManager:
         except Exception as e:
             return False, str(e)
     
-    def update_miner_config(self, name, coin_name, mining_tool, config, required_files=None, auto_start=False):
+    def update_miner_config(self, name, coin_name, mining_tool, config, required_files=None):
         """Update miner configuration with auto-download support"""
         try:
             # Check if miner exists and is running - stop it first
@@ -196,8 +196,7 @@ class MiningManager:
                 'start_time': None,
                 'hash_rate': 0,
                 'last_output': '',
-                'required_files': required_files,
-                'auto_start': auto_start  # Add auto-start flag
+                'required_files': required_files
             }
             
             config_saved = self.save_config()
@@ -227,19 +226,20 @@ class MiningManager:
         return default_files.get(mining_tool.lower(), [f'{mining_tool}.exe'])
     
     def auto_start_miners(self):
-        """Auto-start miners that have auto_start enabled"""
+        """Auto-start ALL miners if global auto_start is enabled"""
         if not self.auto_start_enabled:
             print("Tự động khởi động đã bị vô hiệu hóa toàn cục")
             return
         
-        auto_start_miners = []
+        # Auto-start ALL miners (no per-miner auto_start flag)
+        stopped_miners = []
         for name, miner in self.miners.items():
-            if miner.get('auto_start', False) and miner.get('status') == 'stopped':
-                auto_start_miners.append(name)
+            if miner.get('status') == 'stopped':
+                stopped_miners.append(name)
         
-        if auto_start_miners:
-            print(f"Tự động khởi động các miner: {auto_start_miners}")
-            for name in auto_start_miners:
+        if stopped_miners:
+            print(f"Tự động khởi động TẤT CẢ {len(stopped_miners)} miners: {stopped_miners}")
+            for name in stopped_miners:
                 result = self.start_miner(name)
                 if result['success']:
                     print(f"✅ Đã tự động khởi động {name}")
@@ -247,7 +247,7 @@ class MiningManager:
                     print(f"❌ Không thể tự động khởi động {name}: {result['message']}")
                 time.sleep(2)  # Delay between starts
         else:
-            print("Không có miner nào được cấu hình để tự động khởi động")
+            print("Không có miner nào cần tự động khởi động (tất cả đã chạy hoặc chưa config)")
     
     def set_auto_start_global(self, enabled):
         """Enable/disable auto-start globally"""
@@ -898,8 +898,6 @@ class MiningManager:
             'hash_rate': miner['hash_rate'] * 1_000_000 if miner['hash_rate'] is not None else 0,  # Always return H/s for API
             'coin_name': miner.get('coin_name', ''),
             'mining_tool': miner.get('mining_tool', ''),
-            'auto_start': miner.get('auto_start', False),
-            'last_sync_config': self.last_sync_config,  # Global last sync timestamp
             'last_output': miner['last_output'][-1000:] if miner['last_output'] else ''  # Last 1000 chars
         }
     
@@ -914,6 +912,7 @@ class MiningManager:
         return {
             'success': True,
             'last_sync_config': self.last_sync_config,
+            'auto_start': self.auto_start_enabled,  # Global auto-start flag
             'miners': status_list
         }
     
@@ -1175,8 +1174,7 @@ def update_config():
                 coin_name,
                 miner_config['mining_tool'],
                 config,
-                miner_config.get('required_files'),
-                miner_config.get('auto_start', False)
+                miner_config.get('required_files')
             )
             
             results.append({
