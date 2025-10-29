@@ -97,7 +97,7 @@ if config['auto_start'] == true:
 ```json
 {
   "success": true,
-  "last_sync_config": "2025-10-27T12:00:00Z",
+  "last_sync_config": 1730042400,
   "auto_start": true,  // ← Global flag
   "miners": [
     {

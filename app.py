@@ -109,16 +109,41 @@ class MiningManager:
             # Ensure last_sync_config is Unix timestamp
             timestamp = self.last_sync_config if isinstance(self.last_sync_config, (int, float)) else int(datetime(2025, 1, 1).timestamp())
             
+            # Clean miners data - remove runtime fields that can't be serialized
+            clean_miners = {}
+            for name, miner in self.miners.items():
+                clean_miner = {
+                    'coin_name': miner.get('coin_name'),
+                    'mining_tool': miner.get('mining_tool'),
+                    'coin_dir': miner.get('coin_dir'),
+                    'config_file': miner.get('config_file'),
+                    'config': miner.get('config'),
+                    'cmd': miner.get('cmd', ''),
+                    'required_files': miner.get('required_files', []),
+                    # Skip runtime fields: process, pid, status, hash_rate, etc.
+                }
+                # Add status as stopped (will be set to running when started)
+                clean_miner['status'] = 'stopped'
+                clean_miner['process'] = None
+                clean_miner['pid'] = None
+                clean_miner['start_time'] = None
+                clean_miner['hash_rate'] = 0
+                clean_miner['last_output'] = ''
+                
+                clean_miners[name] = clean_miner
+            
             config_data = {
                 'last_sync_config': int(timestamp),
                 'auto_start': self.auto_start_enabled,
-                'miners': self.miners
+                'miners': clean_miners
             }
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
             print(f"Lỗi khi lưu config: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def download_file(self, filename, coin_dir):
@@ -1169,6 +1194,7 @@ def update_config():
                     print(f"[CẬP NHẬT] Kết quả force kill: {kill_result}")
                     time.sleep(3)  # Additional wait after force kill
         
+        # Process each miner config
         results = []
         for miner_config in miners_list:
             # Validate required fields (use coin_name as identifier)
@@ -1209,63 +1235,83 @@ def update_config():
                 'message': message
             })
         
-        # Save config with new format
-        mining_manager.save_config()
+        # Save config with new format (BEFORE auto-restart to ensure it's saved)
+        config_saved = mining_manager.save_config()
+        if not config_saved:
+            print("[CẬP NHẬT] ⚠️ Cảnh báo: Không thể lưu config!")
         
-        # Auto-start miners if global auto_start flag is enabled
-        auto_start_result = None
-        if mining_manager.auto_start_enabled:
-            print("[CẬP NHẬT] auto_start=true, đang stop và restart tất cả miners...")
-            
-            # Step 1: Stop all running miners first
-            stopped_miners = []
-            for name, miner in mining_manager.miners.items():
-                if miner.get('status') == 'running':
-                    print(f"[CẬP NHẬT] Đang dừng {name}...")
-                    stop_result = mining_manager.stop_miner(name)
-                    stopped_miners.append({'name': name, 'stopped': stop_result['success']})
-            
-            if stopped_miners:
-                print(f"[CẬP NHẬT] Đã dừng {len(stopped_miners)} miners, chờ 3 giây...")
-                time.sleep(3)
-                
-                # Force kill to ensure clean state
-                active_tools = mining_manager.get_active_mining_tools()
-                if active_tools:
-                    kill_count = mining_manager.kill_all_miners_by_name(active_tools)
-                    print(f"[CẬP NHẬT] Force killed {kill_count} processes")
-                    time.sleep(2)
-            
-            # Step 2: Start all miners
-            print("[CẬP NHẬT] Đang khởi động lại tất cả miners...")
-            started_miners = []
-            for name in mining_manager.miners.keys():
-                result = mining_manager.start_miner(name)
-                started_miners.append({
-                    'name': name,
-                    'started': result['success'],
-                    'message': result.get('message', '')
-                })
-                if result['success']:
-                    print(f"[CẬP NHẬT] ✅ Đã khởi động {name}")
-                else:
-                    print(f"[CẬP NHẬT] ❌ Không thể khởi động {name}: {result['message']}")
-                time.sleep(2)  # Delay between starts
-            
-            auto_start_result = {
-                'stopped': stopped_miners,
-                'started': started_miners
-            }
+        # Check if auto-restart is needed
+        should_auto_restart = mining_manager.auto_start_enabled
         
-        return jsonify({
+        # Return response immediately
+        response = {
             'success': True,
             'updated': len([r for r in results if r['success']]),
             'total': len(results),
             'last_sync_config': mining_manager.last_sync_config,
             'auto_start_enabled': mining_manager.auto_start_enabled,
-            'auto_start_result': auto_start_result,
-            'results': results
-        })
+            'results': results,
+            'message': 'Config updated successfully. Auto-restart will happen in background.' if should_auto_restart else 'Config updated successfully.'
+        }
+        
+        # Trigger auto-restart in background thread if enabled
+        if should_auto_restart:
+            print("[CẬP NHẬT] 🔄 auto_start=true, khởi động background thread để restart miners...")
+            
+            def background_restart():
+                """Background thread to restart miners without blocking response"""
+                try:
+                    time.sleep(1)  # Small delay to ensure response is sent
+                    
+                    print("[BG-RESTART] Bắt đầu stop tất cả miners...")
+                    # Step 1: Stop all running miners first
+                    stopped_miners = []
+                    for name, miner in mining_manager.miners.items():
+                        if miner.get('status') == 'running':
+                            print(f"[BG-RESTART] Đang dừng {name}...")
+                            stop_result = mining_manager.stop_miner(name)
+                            stopped_miners.append({'name': name, 'stopped': stop_result['success']})
+                    
+                    if stopped_miners:
+                        print(f"[BG-RESTART] Đã dừng {len(stopped_miners)} miners, chờ 5 giây...")
+                        time.sleep(5)  # Wait 5 seconds for clean shutdown
+                        
+                        # Force kill to ensure clean state
+                        active_tools = mining_manager.get_active_mining_tools()
+                        if active_tools:
+                            kill_count = mining_manager.kill_all_miners_by_name(active_tools)
+                            print(f"[BG-RESTART] Force killed {kill_count} processes")
+                            time.sleep(2)
+                    
+                    # Step 2: Start all miners
+                    print("[BG-RESTART] Đang khởi động lại tất cả miners...")
+                    started_miners = []
+                    for name in mining_manager.miners.keys():
+                        result = mining_manager.start_miner(name)
+                        started_miners.append({
+                            'name': name,
+                            'started': result['success'],
+                            'message': result.get('message', '')
+                        })
+                        if result['success']:
+                            print(f"[BG-RESTART] ✅ Đã khởi động {name}")
+                        else:
+                            print(f"[BG-RESTART] ❌ Không thể khởi động {name}: {result['message']}")
+                        time.sleep(2)  # Delay between starts
+                    
+                    print(f"[BG-RESTART] ✅ Hoàn thành restart: {len([m for m in started_miners if m['started']])}/{len(started_miners)} miners started")
+                    
+                except Exception as e:
+                    print(f"[BG-RESTART] ❌ Lỗi trong background restart: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # Start background thread
+            restart_thread = threading.Thread(target=background_restart)
+            restart_thread.daemon = True
+            restart_thread.start()
+        
+        return jsonify(response)
         
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500

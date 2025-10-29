@@ -1,6 +1,1198 @@
-# Mining Management API với Auto-Download & Auto-Start
+# Mining Management API - Remote Control Mining# Mining Management API# Mining Management API - Remote Control Mining
 
-Ứng dụng Python để quản lý mining từ xa qua HTTP API với tính năng tự động tải file mining và auto-start.
+
+
+API quản lý mining từ xa qua HTTP với tính năng auto-download, auto-start và sync config.
+
+
+
+## ✨ Tính năng chínhAPI quản lý mining từ xa qua HTTP với config sync và auto-start.API quản lý mining từ xa qua HTTP với tính năng auto-download, auto-start và sync config.
+
+
+
+- 🔄 **Config Sync**: Đồng bộ config từ server về client với timestamp
+
+- 🚀 **Global Auto-Start**: Tự động start TẤT CẢ miners khi boot (1 flag toàn cục)
+
+- 📦 **Auto-Download**: Tự động tải mining tools từ CDN**Server:** `http://localhost:9098`## ✨ Tính năng chính
+
+- 🎯 **Smart Hash Rate**: Auto-detect hash rate cho từng mining tool
+
+- ⚡ **Auto-Restart (Background)**: Tự động restart miners KHÔNG ĐỒNG BỘ khi update config
+
+- 🐧 **Cross-Platform**: Windows & Linux support
+
+---- 🔄 **Config Sync**: Đồng bộ config từ server về client với timestamp
+
+---
+
+- 🚀 **Global Auto-Start**: Tự động start TẤT CẢ miners khi boot (1 flag toàn cục)
+
+## 🚀 Cài đặt nhanh
+
+## 🚀 Quick Start- 📦 **Auto-Download**: Tự động tải mining tools từ CDN
+
+### Windows
+
+```bash- 🎯 **Smart Hash Rate**: Auto-detect hash rate cho từng mining tool
+
+pip install -r requirements.txt
+
+python app.py```bash- ⚡ **Auto-Restart**: Tự động restart miners khi update config (nếu auto_start=true)
+
+```
+
+# Windows- 🐧 **Cross-Platform**: Windows & Linux support
+
+### Linux/Ubuntu
+
+```bashpip install -r requirements.txt && python app.py
+
+chmod +x install.sh && ./install.sh
+
+chmod +x run.sh && ./run.sh---
+
+```
+
+# Linux
+
+**Server chạy tại:** `http://localhost:9098`
+
+chmod +x install.sh && ./install.sh && ./run.sh## 🚀 Cài đặt nhanh
+
+---
+
+```
+
+## 📡 API Endpoints
+
+### Windows
+
+### 1. **GET /api/status** - Lấy trạng thái
+
+---```bash
+
+**Response:**
+
+```jsonpip install -r requirements.txt
+
+{
+
+  "success": true,## 📡 API Referencepython app.py
+
+  "last_sync_config": 1730042400,
+
+  "auto_start": true,```
+
+  "miners": [
+
+    {### 1. GET `/api/status` - Lấy trạng thái
+
+      "name": "vrsc",
+
+      "status": "running",### Linux/Ubuntu
+
+      "hash_rate": 50500000,
+
+      "coin_name": "vrsc",```typescript```bash
+
+      "mining_tool": "ccminer",
+
+      "pid": 12345GET /api/statuschmod +x install.sh && ./install.sh
+
+    }
+
+  ]```chmod +x run.sh && ./run.sh
+
+}
+
+``````
+
+
+
+**Fields:****Response:**
+
+- `last_sync_config`: Unix timestamp (số giây) - thời điểm sync config gần nhất
+
+- `auto_start`: Boolean - global flag tự động start tất cả miners```json**Server chạy tại:** `http://localhost:9098`
+
+- `miners[]`: Array - danh sách miners
+
+- `hash_rate`: Number - đơn vị H/s (client tự convert sang KH/s, MH/s, GH/s){
+
+
+
+---  "success": true,---
+
+
+
+### 2. **POST /api/update-config** - Cập nhật config  "last_sync_config": 1730042400,
+
+
+
+**Request:**  "auto_start": true,## 📡 API Endpoints
+
+```json
+
+{  "miners": [
+
+  "last_sync_config": 1730042400,
+
+  "auto_start": true,    {### 1. **GET /api/status** - Lấy trạng thái
+
+  "miners": [
+
+    {      "name": "vrsc",
+
+      "coin_name": "vrsc",
+
+      "mining_tool": "ccminer",      "status": "running",**Response:**
+
+      "config": {
+
+        "pools": [{      "hash_rate": 50500000,```json
+
+          "url": "stratum+tcp://pool.com:3956",
+
+          "user": "WALLET.worker1"      "coin_name": "vrsc",{
+
+        }],
+
+        "algo": "verus"      "mining_tool": "ccminer",  "success": true,
+
+      },
+
+      "required_files": ["ccminer"]      "pid": 12345  "last_sync_config": 1730042400,
+
+    }
+
+  ]    }  "auto_start": true,
+
+}
+
+```  ]  "miners": [
+
+
+
+**⚡ Hành vi mới (Non-blocking):**}    {
+
+1. **Update config** ngay lập tức
+
+2. **Lưu config** vào file```      "name": "vrsc",
+
+3. **Trả response** cho client ngay (KHÔNG chờ restart)
+
+4. **Background thread** tự động:      "status": "running",
+
+   - Stop tất cả miners (nếu `auto_start: true`)
+
+   - Chờ 5 giây**Fields:**      "hash_rate": 50500000,
+
+   - Start lại TẤT CẢ miners
+
+- `last_sync_config`: Unix timestamp - thời điểm sync gần nhất      "coin_name": "vrsc",
+
+**⚠️ Lợi ích:**
+
+- Client **KHÔNG phải đợi** quá trình restart (mất 10-15 giây)- `auto_start`: Boolean - global auto-start flag      "mining_tool": "ccminer",
+
+- Response trả về **ngay lập tức** (< 1 giây)
+
+- Restart diễn ra **trong background** an toàn- `hash_rate`: Number (H/s) - client tự convert sang KH/s, MH/s, GH/s      "pid": 12345
+
+
+
+**Response (Immediate - không chờ restart):**    }
+
+```json
+
+{---  ]
+
+  "success": true,
+
+  "updated": 1,}
+
+  "total": 1,
+
+  "last_sync_config": 1730042400,### 2. POST `/api/update-config` - Update config```
+
+  "auto_start_enabled": true,
+
+  "message": "Config updated successfully. Auto-restart will happen in background.",
+
+  "results": [
+
+    {```typescript**Fields:**
+
+      "coin_name": "vrsc",
+
+      "success": true,POST /api/update-config- `last_sync_config`: Unix timestamp (số giây) - thời điểm sync config gần nhất
+
+      "message": "Cập nhật cấu hình thành công"
+
+    }Content-Type: application/json- `auto_start`: Boolean - global flag tự động start tất cả miners
+
+  ]
+
+}```- `miners[]`: Array - danh sách miners
+
+```
+
+- `hash_rate`: Number - đơn vị H/s (client tự convert sang KH/s, MH/s, GH/s)
+
+**Server Logs (Background):**
+
+```**Request:**
+
+[CẬP NHẬT] 🔄 auto_start=true, khởi động background thread để restart miners...
+
+[BG-RESTART] Bắt đầu stop tất cả miners...```json---
+
+[BG-RESTART] Đang dừng DERO...
+
+[BG-RESTART] Đã dừng 2 miners, chờ 5 giây...{
+
+[BG-RESTART] Đang khởi động lại tất cả miners...
+
+[BG-RESTART] ✅ Đã khởi động VRSC  "last_sync_config": 1730042400,### 2. **POST /api/update-config** - Cập nhật config
+
+[BG-RESTART] ✅ Đã khởi động DERO
+
+[BG-RESTART] ✅ Hoàn thành restart: 2/2 miners started  "auto_start": true,
+
+```
+
+  "miners": [**Request:**
+
+---
+
+    {```json
+
+### 3. **POST /api/start** - Start miner
+
+      "coin_name": "vrsc",{
+
+```json
+
+{      "mining_tool": "ccminer",  "last_sync_config": 1730042400,
+
+  "name": "vrsc"
+
+}      "config": {  "auto_start": true,
+
+```
+
+        "pools": [{"url": "stratum+tcp://pool:3956", "user": "WALLET"}],  "miners": [
+
+### 4. **POST /api/stop** - Stop miner
+
+        "algo": "verus"    {
+
+```json
+
+{      },      "coin_name": "vrsc",
+
+  "name": "vrsc"
+
+}      "required_files": ["ccminer"]      "mining_tool": "ccminer",
+
+```
+
+    }      "config": {
+
+### 5. **POST /api/force-stop-all** - Emergency stop
+
+  ]        "pools": [{
+
+Dừng ngay lập tức TẤT CẢ mining processes.
+
+}          "url": "stratum+tcp://pool.com:3956",
+
+---
+
+```          "user": "WALLET.worker1"
+
+## 🔄 Config Sync Flow
+
+        }],
+
+### Client Logic:
+
+```typescript**Behavior:**        "algo": "verus"
+
+// 1. Lấy last_sync_config từ server
+
+const serverStatus = await fetch('/api/status').then(r => r.json());- `auto_start: true` → Stop all → Update → Start all      },
+
+const serverTimestamp = serverStatus.last_sync_config; // Unix timestamp
+
+- `auto_start: false` → Chỉ update      "required_files": ["ccminer"]
+
+// 2. So sánh với local config
+
+const localTimestamp = getLocalConfigTimestamp(); // Từ database/storage    }
+
+
+
+if (serverTimestamp > localTimestamp) {**Response:**  ]
+
+  // Server config mới hơn → Không cần update
+
+  console.log('Config is up-to-date');```json}
+
+} else if (serverTimestamp < localTimestamp) {
+
+  // Local config mới hơn → Cần push lên server{```
+
+  const response = await updateServerConfig({
+
+    last_sync_config: Date.now() / 1000, // Current timestamp  "success": true,
+
+    auto_start: true,
+
+    miners: [...localMiners]  "updated": 1,**Hành vi khi `auto_start: true`:**
+
+  });
+
+    "total": 1,1. Stop tất cả miners đang chạy
+
+  // Response trả về NGAY (không chờ restart)
+
+  console.log('Config updated:', response.message);  "last_sync_config": 1730042400,2. Update config
+
+  // → "Config updated successfully. Auto-restart will happen in background."
+
+}  "auto_start_enabled": true,3. Start lại TẤT CẢ miners
+
+```
+
+  "auto_start_result": {4. Trả về kết quả stopped/started
+
+### Default Timestamp:
+
+- Server khởi động lần đầu: `last_sync_config = 1735689600` (2025-01-01 00:00:00)    "stopped": [{"name": "vrsc", "stopped": true}],
+
+- Client thấy timestamp cũ → Trigger update config
+
+    "started": [{"name": "vrsc", "started": true}]**Response:**
+
+---
+
+  }```json
+
+## 🎯 Global Auto-Start
+
+}{
+
+### Logic:
+
+- **`auto_start: true`** → Tự động start **TẤT CẢ** miners khi:```  "success": true,
+
+  - App boot (sau 5 giây)
+
+  - Update config (background thread, không block client)  "updated": 1,
+
+  
+
+- **`auto_start: false`** → KHÔNG tự động start---  "total": 1,
+
+
+
+### Ví dụ:  "last_sync_config": 1730042400,
+
+```json
+
+{### 3. POST `/api/start` - Start miner  "auto_start_enabled": true,
+
+  "auto_start": true,
+
+  "miners": [  "auto_start_result": {
+
+    {"coin_name": "vrsc", ...},
+
+    {"coin_name": "dero", ...}```json    "stopped": [{"name": "vrsc", "stopped": true}],
+
+  ]
+
+}POST /api/start    "started": [{"name": "vrsc", "started": true}]
+
+```
+
+{"name": "vrsc"}  }
+
+**Kết quả:** Cả `vrsc` VÀ `dero` đều sẽ tự động start.
+
+```}
+
+❌ **KHÔNG CÒN** `auto_start` riêng lẻ ở mỗi miner!
+
+```
+
+---
+
+### 4. POST `/api/stop` - Stop miner
+
+## 🔢 Hash Rate Format
+
+---
+
+**API luôn trả về H/s:**
+
+```json```json
+
+{
+
+  "hash_rate": 50500000  // 50.5 MH/sPOST /api/stop### 3. **POST /api/start** - Start miner
+
+}
+
+```{"name": "vrsc"}
+
+
+
+**Client convert:**``````json
+
+```typescript
+
+function formatHashRate(hashRateHS: number): string {{
+
+  if (hashRateHS >= 1e9) return `${(hashRateHS/1e9).toFixed(2)} GH/s`;
+
+  if (hashRateHS >= 1e6) return `${(hashRateHS/1e6).toFixed(2)} MH/s`;### 5. POST `/api/force-stop-all` - Emergency stop  "name": "vrsc"
+
+  if (hashRateHS >= 1e3) return `${(hashRateHS/1e3).toFixed(2)} KH/s`;
+
+  return `${hashRateHS.toFixed(2)} H/s`;}
+
+}
+
+```json```
+
+// formatHashRate(50500000) → "50.50 MH/s"
+
+// formatHashRate(1080) → "1.08 KH/s"POST /api/force-stop-all
+
+```
+
+```### 4. **POST /api/stop** - Stop miner
+
+---
+
+
+
+## 📦 Supported Mining Tools
+
+---```json
+
+| Tool | Hash Rate Pattern | Config Type |
+
+|------|-------------------|-------------|{
+
+| **ccminer** | `GPU #0: 25.50 MH/s` | JSON Object |
+
+| **astrominer** | `Hashrate 1.08KH/s` | CLI String |## 🔄 Config Sync Logic  "name": "vrsc"
+
+| **xmrig** | `speed 1000.0 H/s` | JSON Object |
+
+| **t-rex** | `GPU #0: 45.5 MH/s` | JSON Object |}
+
+
+
+**Auto-Download từ:** `http://cdn.dndvina.com/minings/{filename}````typescript```
+
+
+
+---// 1. Get server timestamp
+
+
+
+## 🔧 Config Examplesconst { last_sync_config } = await fetch('/api/status').then(r => r.json());### 5. **POST /api/force-stop-all** - Emergency stop
+
+
+
+### JSON Config (ccminer):
+
+```json
+
+{// 2. Compare with localDừng ngay lập tức TẤT CẢ mining processes.
+
+  "coin_name": "vrsc",
+
+  "mining_tool": "ccminer",const localTimestamp = getLocalConfigTimestamp();
+
+  "config": {
+
+    "pools": [{---
+
+      "url": "stratum+tcp://pool.com:3956",
+
+      "user": "WALLET.worker1"if (last_sync_config < localTimestamp) {
+
+    }],
+
+    "algo": "verus",  // Server cũ hơn → Push config mới## 🔄 Config Sync Flow
+
+    "threads": 8
+
+  },  await fetch('/api/update-config', {
+
+  "required_files": ["ccminer"]
+
+}    method: 'POST',### Client Logic:
+
+```
+
+    headers: { 'Content-Type': 'application/json' },```typescript
+
+### CLI String (astrominer):
+
+```json    body: JSON.stringify({// 1. Lấy last_sync_config từ server
+
+{
+
+  "coin_name": "dero",      last_sync_config: Math.floor(Date.now() / 1000),const serverStatus = await fetch('/api/status').then(r => r.json());
+
+  "mining_tool": "astrominer",
+
+  "config": "-w WALLET -r pool.com:10300 -m 8",      auto_start: true,const serverTimestamp = serverStatus.last_sync_config; // Unix timestamp
+
+  "required_files": ["astrominer"]
+
+}      miners: [...]
+
+```
+
+    })// 2. So sánh với local config
+
+---
+
+  });const localTimestamp = getLocalConfigTimestamp(); // Từ database/storage
+
+## 📱 Client Integration
+
+}
+
+### Kotlin/Android:
+
+```kotlin```if (serverTimestamp > localTimestamp) {
+
+data class MiningConfig(
+
+    val last_sync_config: Long,  // Unix timestamp  // Server config mới hơn → Không cần update
+
+    val auto_start: Boolean,
+
+    val miners: List<MinerConfig>**Default:** Server khởi tạo với `last_sync_config = 1735689600` (2025-01-01)  console.log('Config is up-to-date');
+
+)
+
+} else if (serverTimestamp < localTimestamp) {
+
+suspend fun syncConfig(localTimestamp: Long, localConfig: MiningConfig) {
+
+    val serverStatus = apiService.getStatus()---  // Local config mới hơn → Cần push lên server
+
+    
+
+    if (serverStatus.last_sync_config < localTimestamp) {  await updateServerConfig({
+
+        // Push local config to server
+
+        val newConfig = localConfig.copy(## 🎯 Global Auto-Start    last_sync_config: Date.now() / 1000, // Current timestamp
+
+            last_sync_config = System.currentTimeMillis() / 1000
+
+        )    auto_start: true,
+
+        val response = apiService.updateConfig(newConfig)
+
+        ```json    miners: [...localMiners]
+
+        // Response trả về ngay, restart diễn ra background
+
+        Log.d("Mining", response.message){  });
+
+    }
+
+}  "auto_start": true,}
+
+```
+
+  "miners": [```
+
+### JavaScript/React:
+
+```typescript    {"coin_name": "vrsc", ...},
+
+const syncConfig = async (localTimestamp: number, localConfig: Config) => {
+
+  const serverStatus = await fetch('/api/status').then(r => r.json());    {"coin_name": "dero", ...}### Default Timestamp:
+
+  
+
+  if (serverStatus.last_sync_config < localTimestamp) {  ]- Server khởi động lần đầu: `last_sync_config = 1735689600` (2025-01-01 00:00:00)
+
+    const response = await fetch('/api/update-config', {
+
+      method: 'POST',}- Client thấy timestamp cũ → Trigger update config
+
+      headers: { 'Content-Type': 'application/json' },
+
+      body: JSON.stringify({```
+
+        last_sync_config: Math.floor(Date.now() / 1000),
+
+        auto_start: true,---
+
+        miners: localConfig.miners
+
+      })- ✅ `auto_start: true` → Start TẤT CẢ miners (app boot + update config)
+
+    }).then(r => r.json());
+
+    - ❌ `auto_start: false` → KHÔNG start## 🎯 Global Auto-Start
+
+    // Response trả về ngay (< 1s), không phải đợi restart
+
+    console.log(response.message);
+
+    // → "Config updated successfully. Auto-restart will happen in background."
+
+  }❌ **KHÔNG CÒN** `auto_start` riêng lẻ ở mỗi miner!### Logic:
+
+};
+
+```- **`auto_start: true`** → Tự động start **TẤT CẢ** miners khi:
+
+
+
+------  - App boot (sau 5 giây)
+
+
+
+## 🎯 Typical Workflow  - Update config (stop cũ → start mới)
+
+
+
+### 1. Client khởi động:## 🔢 Hash Rate Format  
+
+```
+
+Client → GET /api/status- **`auto_start: false`** → KHÔNG tự động start
+
+       ← {last_sync_config: 1730042400, auto_start: true, miners: [...]}
+
+       **API trả về H/s, client convert:**
+
+Client: So sánh với local timestamp
+
+       → Nếu server cũ hơn → Push config mới### Ví dụ:
+
+```
+
+```typescript```json
+
+### 2. Update config từ client:
+
+```function formatHashRate(hashRateHS: number): string {{
+
+Client → POST /api/update-config
+
+         {last_sync_config: 1730050000, auto_start: true, miners: [...]}  if (hashRateHS >= 1e9) return `${(hashRateHS/1e9).toFixed(2)} GH/s`;  "auto_start": true,
+
+       
+
+Server: ✅ Update config  if (hashRateHS >= 1e6) return `${(hashRateHS/1e6).toFixed(2)} MH/s`;  "miners": [
+
+        ✅ Save to file
+
+        ← Response NGAY (< 1s)  if (hashRateHS >= 1e3) return `${(hashRateHS/1e3).toFixed(2)} KH/s`;    {"coin_name": "vrsc", ...},
+
+        
+
+        [Background Thread]  return `${hashRateHS.toFixed(2)} H/s`;    {"coin_name": "dero", ...}
+
+        🔄 Stop all miners
+
+        ⏱️ Wait 5 seconds}  ]
+
+        🚀 Start all miners
+
+        ✅ Done (10-15s total)}
+
+       
+
+Client: ← {success: true, message: "Auto-restart will happen in background"}// Example: 50500000 → "50.50 MH/s"```
+
+        (Không phải đợi 10-15s!)
+
+``````
+
+
+
+### 3. Monitor hash rate:**Kết quả:** Cả `vrsc` VÀ `dero` đều sẽ tự động start.
+
+```
+
+Client → GET /api/status (mỗi 10 giây)---
+
+       ← {miners: [{hash_rate: 50500000, status: "running"}]}
+
+       ❌ **KHÔNG CÒN** `auto_start` riêng lẻ ở mỗi miner!
+
+Client: Format 50500000 H/s → "50.50 MH/s"
+
+```## 📦 Mining Tools
+
+
+
+------
+
+
+
+## 🚨 Troubleshooting| Tool | Config Type | Hash Pattern |
+
+
+
+### Server không start:|------|-------------|--------------|## 🔢 Hash Rate Format
+
+```bash
+
+# Check port| **ccminer** | JSON Object | `GPU #0: 25.50 MH/s` |
+
+netstat -ano | findstr :9098  # Windows
+
+lsof -i :9098                 # Linux| **astrominer** | CLI String | `Hashrate 1.08KH/s` |**API luôn trả về H/s:**
+
+
+
+# Remove PID lock| **xmrig** | JSON Object | `speed 1000.0 H/s` |```json
+
+rm mining_manager.pid         # Linux
+
+del mining_manager.pid        # Windows{
+
+```
+
+**Auto-download từ:** `http://cdn.dndvina.com/minings/{filename}`  "hash_rate": 50500000  // 50.5 MH/s
+
+### Config không sync:
+
+```bash}
+
+# Check server status
+
+curl http://localhost:9098/api/status---```
+
+
+
+# Force update (response trả về ngay, restart diễn ra background)
+
+curl -X POST http://localhost:9098/api/update-config \
+
+  -H "Content-Type: application/json" \## 💻 Client Examples**Client convert:**
+
+  -d '{"last_sync_config": 1730050000, "auto_start": true, "miners": [...]}'
+
+``````typescript
+
+
+
+### Miners không auto-start:### Kotlin/Androidfunction formatHashRate(hashRateHS: number): string {
+
+```bash
+
+# Check global flag  if (hashRateHS >= 1e9) return `${(hashRateHS/1e9).toFixed(2)} GH/s`;
+
+curl http://localhost:9098/api/status | grep auto_start
+
+```kotlin  if (hashRateHS >= 1e6) return `${(hashRateHS/1e6).toFixed(2)} MH/s`;
+
+# Manual trigger
+
+curl -X POST http://localhost:9098/api/start \data class MiningConfig(  if (hashRateHS >= 1e3) return `${(hashRateHS/1e3).toFixed(2)} KH/s`;
+
+  -d '{"name": "vrsc"}'
+
+```    val last_sync_config: Long,  return `${hashRateHS.toFixed(2)} H/s`;
+
+
+
+---    val auto_start: Boolean,}
+
+
+
+## 📚 API Summary    val miners: List<MinerConfig>
+
+
+
+| Endpoint | Method | Purpose | Response Time |)// formatHashRate(50500000) → "50.50 MH/s"
+
+|----------|--------|---------|---------------|
+
+| `/api/status` | GET | Lấy trạng thái + last_sync_config | Instant |// formatHashRate(1080) → "1.08 KH/s"
+
+| `/api/update-config` | POST | Update config + **background restart** | **< 1s (không chờ restart)** |
+
+| `/api/start` | POST | Start miner thủ công | Instant |suspend fun syncConfig(localTimestamp: Long, config: MiningConfig) {```
+
+| `/api/stop` | POST | Stop miner thủ công | 2-5s |
+
+| `/api/force-stop-all` | POST | Emergency stop tất cả | 5-10s |    val status = apiService.getStatus()
+
+
+
+---    ---
+
+
+
+## 📄 License    if (status.last_sync_config < localTimestamp) {
+
+
+
+MIT License - Free to use        apiService.updateConfig(config.copy(## 📦 Supported Mining Tools
+
+
+
+## 🎉 Credits            last_sync_config = System.currentTimeMillis() / 1000
+
+
+
+Developed by **ndduoc1189**        ))| Tool | Hash Rate Pattern | Config Type |
+
+
+
+GitHub: https://github.com/ndduoc1189/dndvina-mining    }|------|-------------------|-------------|
+
+
+}| **ccminer** | `GPU #0: 25.50 MH/s` | JSON Object |
+
+```| **astrominer** | `Hashrate 1.08KH/s` | CLI String |
+
+| **xmrig** | `speed 1000.0 H/s` | JSON Object |
+
+### TypeScript/React| **t-rex** | `GPU #0: 45.5 MH/s` | JSON Object |
+
+
+
+```typescript**Auto-Download từ:** `http://cdn.dndvina.com/minings/{filename}`
+
+const syncConfig = async (localTimestamp: number, config: Config) => {
+
+  const { last_sync_config } = await fetch('/api/status').then(r => r.json());---
+
+  
+
+  if (last_sync_config < localTimestamp) {## 🔧 Config Examples
+
+    await fetch('/api/update-config', {
+
+      method: 'POST',### JSON Config (ccminer):
+
+      body: JSON.stringify({```json
+
+        last_sync_config: Math.floor(Date.now() / 1000),{
+
+        auto_start: true,  "coin_name": "vrsc",
+
+        miners: config.miners  "mining_tool": "ccminer",
+
+      })  "config": {
+
+    });    "pools": [{
+
+  }      "url": "stratum+tcp://pool.com:3956",
+
+};      "user": "WALLET.worker1"
+
+```    }],
+
+    "algo": "verus",
+
+### Python    "threads": 8
+
+  },
+
+```python  "required_files": ["ccminer"]
+
+import requests}
+
+```
+
+class MiningAPI:
+
+    def __init__(self, base_url='http://localhost:9098'):### CLI String (astrominer):
+
+        self.base = base_url```json
+
+    {
+
+    def get_status(self):  "coin_name": "dero",
+
+        return requests.get(f'{self.base}/api/status').json()  "mining_tool": "astrominer",
+
+      "config": "-w WALLET -r pool.com:10300 -m 8",
+
+    def update_config(self, config):  "required_files": ["astrominer"]
+
+        return requests.post(}
+
+            f'{self.base}/api/update-config',```
+
+            json=config
+
+        ).json()---
+
+    
+
+    def start_miner(self, name):## 🛠️ Configuration (config.py)
+
+        return requests.post(
+
+            f'{self.base}/api/start',```python
+
+            json={'name': name}# Server
+
+        ).json()SERVER_HOST = '0.0.0.0'
+
+```SERVER_PORT = 9098
+
+
+
+---# Logging
+
+ENABLE_FLASK_ACCESS_LOGS = False  # Tắt "GET /api/status" logs
+
+## 🎯 Typical WorkflowENABLE_MONITOR_LOGS = True        # Periodic status logs
+
+ENABLE_DEBUG_LOGS = False
+
+```
+
+1. Client Boot# Auto-Start
+
+   ↓AUTO_START_ON_BOOT = True  # Global auto-start on server boot
+
+   GET /api/status → {last_sync_config: 1730042400}```
+
+   ↓
+
+   Compare với local timestamp---
+
+   ↓
+
+   Nếu server cũ → POST /api/update-config## 📱 Client Integration
+
+
+
+2. Monitor (mỗi 10s)### Kotlin/Android:
+
+   ↓```kotlin
+
+   GET /api/status → {miners: [{hash_rate: 50500000, ...}]}data class MiningConfig(
+
+   ↓    val last_sync_config: Long,  // Unix timestamp
+
+   Format & Display    val auto_start: Boolean,
+
+    val miners: List<MinerConfig>
+
+3. User thay đổi config)
+
+   ↓
+
+   POST /api/update-config với timestamp mớisuspend fun syncConfig(localTimestamp: Long, localConfig: MiningConfig) {
+
+   ↓    val serverStatus = apiService.getStatus()
+
+   Server auto-restart miners (nếu auto_start=true)    
+
+```    if (serverStatus.last_sync_config < localTimestamp) {
+
+        // Push local config to server
+
+---        val newConfig = localConfig.copy(
+
+            last_sync_config = System.currentTimeMillis() / 1000
+
+## 🔧 Config Examples        )
+
+        apiService.updateConfig(newConfig)
+
+### JSON Config (ccminer):    }
+
+```json}
+
+{```
+
+  "coin_name": "vrsc",
+
+  "mining_tool": "ccminer",### JavaScript/React:
+
+  "config": {```typescript
+
+    "pools": [{"url": "stratum+tcp://pool:3956", "user": "WALLET"}],const syncConfig = async (localTimestamp: number, localConfig: Config) => {
+
+    "algo": "verus",  const serverStatus = await fetch('/api/status').then(r => r.json());
+
+    "threads": 8  
+
+  },  if (serverStatus.last_sync_config < localTimestamp) {
+
+  "required_files": ["ccminer"]    await fetch('/api/update-config', {
+
+}      method: 'POST',
+
+```      headers: { 'Content-Type': 'application/json' },
+
+      body: JSON.stringify({
+
+### CLI String (astrominer):        last_sync_config: Math.floor(Date.now() / 1000),
+
+```json        auto_start: true,
+
+{        miners: localConfig.miners
+
+  "coin_name": "dero",      })
+
+  "mining_tool": "astrominer",    });
+
+  "config": "-w WALLET -r pool:10300 -m 8",  }
+
+  "required_files": ["astrominer"]};
+
+}```
+
+```
+
+---
+
+---
+
+## 🎯 Typical Workflow
+
+## 🚨 Troubleshooting
+
+### 1. Client khởi động:
+
+```bash```
+
+# Check server statusClient → GET /api/status
+
+curl http://localhost:9098/api/status       ← {last_sync_config: 1730042400, auto_start: true, miners: [...]}
+
+       
+
+# Force updateClient: So sánh với local timestamp
+
+curl -X POST http://localhost:9098/api/update-config \        → Nếu server cũ hơn → Push config mới
+
+  -H "Content-Type: application/json" \```
+
+  -d '{"last_sync_config": 1730050000, "auto_start": true, "miners": [...]}'
+
+### 2. Update config từ client:
+
+# Emergency stop```
+
+curl -X POST http://localhost:9098/api/force-stop-allClient → POST /api/update-config
+
+```         {last_sync_config: 1730050000, auto_start: true, miners: [...]}
+
+       
+
+---Server: Stop all miners → Update → Start all (nếu auto_start=true)
+
+       ← {success: true, auto_start_result: {...}}
+
+## 📚 API Summary```
+
+
+
+| Endpoint | Method | Purpose |### 3. Monitor hash rate:
+
+|----------|--------|---------|```
+
+| `/api/status` | GET | Lấy trạng thái + timestamp |Client → GET /api/status (mỗi 10 giây)
+
+| `/api/update-config` | POST | Update + auto-restart |       ← {miners: [{hash_rate: 50500000, status: "running"}]}
+
+| `/api/start` | POST | Start miner |       
+
+| `/api/stop` | POST | Stop miner |Client: Format 50500000 H/s → "50.50 MH/s"
+
+| `/api/force-stop-all` | POST | Emergency stop |```
+
+
+
+------
+
+
+
+## 📄 License## 🚨 Troubleshooting
+
+
+
+MIT License### Server không start:
+
+```bash
+
+## 🎉 Credits# Check port
+
+netstat -ano | findstr :9098  # Windows
+
+**ndduoc1189** - https://github.com/ndduoc1189/dndvina-mininglsof -i :9098                 # Linux
+
+
+# Remove PID lock
+rm mining_manager.pid         # Linux
+del mining_manager.pid        # Windows
+```
+
+### Config không sync:
+```bash
+# Check server status
+curl http://localhost:9098/api/status
+
+# Force update
+curl -X POST http://localhost:9098/api/update-config \
+  -H "Content-Type: application/json" \
+  -d '{"last_sync_config": 1730050000, "auto_start": true, "miners": [...]}'
+```
+
+### Miners không auto-start:
+```bash
+# Check global flag
+curl http://localhost:9098/api/status | grep auto_start
+
+# Manual trigger
+curl -X POST http://localhost:9098/api/start \
+  -d '{"name": "vrsc"}'
+```
+
+---
+
+## 📚 API Summary
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/status` | GET | Lấy trạng thái + last_sync_config |
+| `/api/update-config` | POST | Update config + auto-restart |
+| `/api/start` | POST | Start miner thủ công |
+| `/api/stop` | POST | Stop miner thủ công |
+| `/api/force-stop-all` | POST | Emergency stop tất cả |
+
+---
+
+## 📄 License
+
+MIT License - Free to use
+
+## 🎉 Credits
+
+Developed by **ndduoc1189**
+
+GitHub: https://github.com/ndduoc1189/dndvina-mining
 
 ## ✨ Tính năng
 
