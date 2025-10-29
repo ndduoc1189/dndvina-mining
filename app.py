@@ -1227,7 +1227,22 @@ def update_config():
         else:
             return jsonify({'success': False, 'message': 'Config phải là object với field "miners" hoặc array'}), 400
         
-        # Process each miner config
+        # Save old miners list for background restart to stop
+        print(f"[UPDATE-CONFIG-{request_id}] � Lưu danh sách miners cũ để background restart xử lý...")
+        old_miners_to_stop = []
+        for name, miner in mining_manager.miners.items():
+            if miner.get('status') == 'running':
+                old_miners_to_stop.append({
+                    'name': name,
+                    'tool': miner.get('mining_tool', '')
+                })
+        print(f"[UPDATE-CONFIG-{request_id}] Miners đang chạy (sẽ stop trong background): {[m['name'] for m in old_miners_to_stop]}")
+        
+        # Clear all old miners from memory (don't stop yet - let background do it)
+        mining_manager.miners.clear()
+        print(f"[UPDATE-CONFIG-{request_id}] ✅ Đã xóa miners cũ khỏi memory")
+        
+        # Process each miner config (will create new miners)
         results = []
         for miner_config in miners_list:
             # Validate required fields (use coin_name as identifier)
@@ -1297,35 +1312,33 @@ def update_config():
         
         # Trigger auto-restart in background thread if enabled (client không cần biết chi tiết này)
         if should_auto_restart:
-            print("[CẬP NHẬT] 🔄 auto_start=true, khởi động background thread để restart miners...")
+            print("[CẬP NHẬT] 🔄 auto_start=true, khởi động background thread để stop miners cũ và start miners mới...")
+            
+            # Capture old_miners_to_stop for background thread
+            old_miners_snapshot = old_miners_to_stop.copy()
             
             def background_restart():
-                """Background thread to restart miners without blocking response"""
+                """Background thread to stop old miners and start new miners"""
                 try:
                     time.sleep(1)  # Small delay to ensure response is sent
                     
-                    print("[BG-RESTART] Bắt đầu stop tất cả miners...")
-                    # Step 1: Stop all running miners first
-                    stopped_miners = []
-                    for name, miner in mining_manager.miners.items():
-                        if miner.get('status') == 'running':
-                            print(f"[BG-RESTART] Đang dừng {name}...")
-                            stop_result = mining_manager.stop_miner(name)
-                            stopped_miners.append({'name': name, 'stopped': stop_result['success']})
-                    
-                    if stopped_miners:
-                        print(f"[BG-RESTART] Đã dừng {len(stopped_miners)} miners, chờ 5 giây...")
-                        time.sleep(5)  # Wait 5 seconds for clean shutdown
+                    # Step 1: Stop all OLD running miners
+                    if old_miners_snapshot:
+                        print(f"[BG-RESTART] Bắt đầu stop {len(old_miners_snapshot)} miners cũ...")
                         
-                        # Force kill to ensure clean state
-                        active_tools = mining_manager.get_active_mining_tools()
-                        if active_tools:
-                            kill_count = mining_manager.kill_all_miners_by_name(active_tools)
-                            print(f"[BG-RESTART] Force killed {kill_count} processes")
-                            time.sleep(2)
+                        # Collect all tools to force kill
+                        old_tools = set([m['tool'] for m in old_miners_snapshot if m['tool']])
+                        
+                        if old_tools:
+                            print(f"[BG-RESTART] Force kill processes cũ: {list(old_tools)}")
+                            kill_count = mining_manager.kill_all_miners_by_name(list(old_tools))
+                            print(f"[BG-RESTART] Đã kill {kill_count} processes cũ")
+                            time.sleep(3)  # Wait for clean shutdown
+                    else:
+                        print("[BG-RESTART] Không có miners cũ đang chạy")
                     
-                    # Step 2: Start all miners
-                    print("[BG-RESTART] Đang khởi động lại tất cả miners...")
+                    # Step 2: Start all NEW miners (from updated config)
+                    print(f"[BG-RESTART] Đang khởi động {len(mining_manager.miners)} miners mới...")
                     started_miners = []
                     for name in mining_manager.miners.keys():
                         result = mining_manager.start_miner(name)
