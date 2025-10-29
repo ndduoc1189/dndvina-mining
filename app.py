@@ -1026,11 +1026,21 @@ class MiningManager:
         process = miner['process']
         
         if not process:
+            print(f"[MONITOR-{name}] ⚠️ No process object to monitor")
             return
         
         try:
             mining_tool = miner.get('mining_tool', '').lower()
             line_count = 0
+            
+            print(f"[MONITOR-{name}] 🔍 Bắt đầu monitor PID {process.pid}, tool={mining_tool}")
+            
+            # Check if process is still alive before reading
+            if process.poll() is not None:
+                print(f"[MONITOR-{name}] ⚠️ Process đã chết trước khi monitor! Return code: {process.returncode}")
+                miner['status'] = 'error'
+                miner['last_output'] = f"Process exited immediately with code {process.returncode}"
+                return
             
             for line in iter(process.stdout.readline, ''):
                 if not line:
@@ -1038,9 +1048,9 @@ class MiningManager:
                 
                 line_count += 1
                 
-                # Debug: Print first 10 lines for astrominer to see what's happening
-                if mining_tool == 'astrominer' and line_count <= 10:
-                    print(f"[{name}] [DEBUG-LINE-{line_count}] {line.strip()}")
+                # Debug: Print first 20 lines for ALL miners to see what's happening
+                if line_count <= 20:
+                    print(f"[{name}] [LINE-{line_count}] {line.strip()}")
                 
                 # Store latest output for monitoring
                 if 'latest_output' not in miner:
@@ -1074,19 +1084,28 @@ class MiningManager:
                 
                 # Check if process is still running
                 if process.poll() is not None:
+                    print(f"[MONITOR-{name}] ⚠️ Process died during monitoring! Return code: {process.returncode}, Lines read: {line_count}")
                     break
             
             # Process has ended
+            return_code = process.poll()
             miner['status'] = 'stopped'
             miner['process'] = None
             miner['pid'] = None
             miner['hash_rate'] = 0
-            print(f"[{name}] Tiến trình mining đã kết thúc")
+            
+            if line_count == 0:
+                print(f"[MONITOR-{name}] ⚠️ Tiến trình kết thúc mà KHÔNG có output nào! Return code: {return_code}")
+                miner['last_output'] = f"Process exited with code {return_code}, no output captured"
+            else:
+                print(f"[MONITOR-{name}] Tiến trình mining đã kết thúc (đã đọc {line_count} dòng, return code: {return_code})")
             
         except Exception as e:
-            print(f"[LỖI] Lỗi khi theo dõi miner {name}: {e}")
+            print(f"[MONITOR-{name}] ❌ Lỗi khi theo dõi miner: {e}")
+            import traceback
+            traceback.print_exc()
             miner['status'] = 'error'
-            miner['status'] = 'error'
+            miner['last_output'] = f"Monitor error: {str(e)}"
     
     def _format_hash_rate(self, hash_rate_mh):
         """Format hash rate with smart unit selection (KH/s, MH/s, GH/s)"""
@@ -1626,14 +1645,61 @@ def get_miner_output(miner_name):
         
         miner = mining_manager.miners[miner_name]
         
+        # Check process status if PID exists
+        process_info = None
+        if miner['pid']:
+            try:
+                proc = psutil.Process(miner['pid'])
+                process_info = {
+                    'exists': True,
+                    'name': proc.name(),
+                    'status': proc.status(),
+                    'cpu_percent': proc.cpu_percent(interval=0.1),
+                    'memory_mb': proc.memory_info().rss / 1024 / 1024,
+                    'create_time': proc.create_time(),
+                    'cmdline': ' '.join(proc.cmdline()),
+                    'num_threads': proc.num_threads()
+                }
+                
+                # Check children
+                children = proc.children(recursive=True)
+                process_info['children'] = []
+                for child in children:
+                    try:
+                        process_info['children'].append({
+                            'pid': child.pid,
+                            'name': child.name(),
+                            'status': child.status()
+                        })
+                    except:
+                        pass
+                        
+            except psutil.NoSuchProcess:
+                process_info = {
+                    'exists': False,
+                    'message': 'Process not found - may have died'
+                }
+            except Exception as e:
+                process_info = {
+                    'exists': False,
+                    'error': str(e)
+                }
+        
         return jsonify({
             'success': True,
             'name': miner_name,
             'status': miner['status'],
             'pid': miner['pid'],
+            'start_time': miner.get('start_time'),
+            'coin_name': miner.get('coin_name'),
+            'mining_tool': miner.get('mining_tool'),
+            'config': miner.get('config'),
+            'cmd': miner.get('cmd'),
+            'coin_dir': miner.get('coin_dir'),
             'latest_output': miner.get('latest_output', ''),
             'last_output': miner.get('last_output', ''),
-            'hash_rate': miner.get('hash_rate', 0)
+            'hash_rate': miner.get('hash_rate', 0),
+            'process_info': process_info
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
