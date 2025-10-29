@@ -302,10 +302,11 @@ class MiningManager:
                 'required_files': required_files
             }
             
-            config_saved = self.save_config()
+            # Don't save here - let the endpoint save once after all miners are updated
+            # config_saved = self.save_config()
             
             # Config updated - user needs to call /api/start to run the miner
-            return config_saved, "Cập nhật cấu hình thành công"
+            return True, "Cập nhật cấu hình thành công"
             
         except Exception as e:
             return False, str(e)
@@ -1195,7 +1196,19 @@ def update_config():
     }
     """
     try:
+        import uuid
+        request_id = str(uuid.uuid4())[:8]
+        print(f"\n{'='*80}")
+        print(f"[UPDATE-CONFIG-{request_id}] 🚀 Endpoint được gọi lúc {datetime.now().strftime('%H:%M:%S.%f')}")
+        print(f"[UPDATE-CONFIG-{request_id}] Request method: {request.method}")
+        print(f"[UPDATE-CONFIG-{request_id}] Request path: {request.path}")
+        print(f"[UPDATE-CONFIG-{request_id}] Request headers: {dict(request.headers)}")
+        
         data = request.get_json()
+        
+        print(f"[UPDATE-CONFIG-{request_id}] 📦 Body nhận được:")
+        print(f"[UPDATE-CONFIG-{request_id}] {json.dumps(data, indent=2, ensure_ascii=False)}")
+        print(f"{'='*80}\n")
         
         # Support both old format (array) and new format (object with miners array)
         if isinstance(data, dict) and 'miners' in data:
@@ -1339,9 +1352,16 @@ def update_config():
             restart_thread.daemon = True
             restart_thread.start()
         
+        print(f"[UPDATE-CONFIG-{request_id}] ✅ Trả về response cho client lúc {datetime.now().strftime('%H:%M:%S.%f')}")
+        print(f"[UPDATE-CONFIG-{request_id}] Response: {json.dumps(response, ensure_ascii=False)}")
+        print(f"{'='*80}\n")
+        
         return jsonify(response)
         
     except Exception as e:
+        print(f"[UPDATE-CONFIG] ❌ LỖI: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/start', methods=['POST'])
