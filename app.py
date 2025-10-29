@@ -106,12 +106,33 @@ class MiningManager:
     def save_config(self):
         """Save mining configuration to file in new format"""
         try:
+            print("[SAVE-CONFIG] Bắt đầu lưu config...")
+            
             # Ensure last_sync_config is Unix timestamp
             timestamp = self.last_sync_config if isinstance(self.last_sync_config, (int, float)) else int(datetime(2025, 1, 1).timestamp())
+            print(f"[SAVE-CONFIG] Timestamp: {timestamp}")
             
             # Clean miners data - remove runtime fields that can't be serialized
             clean_miners = {}
             for name, miner in self.miners.items():
+                print(f"[SAVE-CONFIG] Cleaning miner: {name}")
+                print(f"[SAVE-CONFIG]   - coin_name: {miner.get('coin_name')}")
+                print(f"[SAVE-CONFIG]   - mining_tool: {miner.get('mining_tool')}")
+                print(f"[SAVE-CONFIG]   - config type: {type(miner.get('config'))}")
+                
+                # Check for problematic fields
+                problematic_fields = []
+                for key, value in miner.items():
+                    if hasattr(value, '__call__'):  # Function
+                        problematic_fields.append(f"{key}=<function>")
+                    elif value.__class__.__name__ == 'Popen':  # Subprocess
+                        problematic_fields.append(f"{key}=<Popen>")
+                    elif not isinstance(value, (str, int, float, bool, list, dict, type(None))):
+                        problematic_fields.append(f"{key}={type(value).__name__}")
+                
+                if problematic_fields:
+                    print(f"[SAVE-CONFIG]   ⚠️ Problematic fields in {name}: {problematic_fields}")
+                
                 clean_miner = {
                     'coin_name': miner.get('coin_name'),
                     'mining_tool': miner.get('mining_tool'),
@@ -131,19 +152,50 @@ class MiningManager:
                 clean_miner['last_output'] = ''
                 
                 clean_miners[name] = clean_miner
+                print(f"[SAVE-CONFIG]   ✅ Cleaned successfully")
             
             config_data = {
                 'last_sync_config': int(timestamp),
                 'auto_start': self.auto_start_enabled,
                 'miners': clean_miners
             }
+            
+            print(f"[SAVE-CONFIG] Config data prepared:")
+            print(f"[SAVE-CONFIG]   - last_sync_config: {config_data['last_sync_config']}")
+            print(f"[SAVE-CONFIG]   - auto_start: {config_data['auto_start']}")
+            print(f"[SAVE-CONFIG]   - miners count: {len(config_data['miners'])}")
+            
+            print(f"[SAVE-CONFIG] Writing to file: {self.config_file}")
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
+            
+            print("[SAVE-CONFIG] ✅ File written successfully")
             return True
         except Exception as e:
-            print(f"Lỗi khi lưu config: {e}")
+            print(f"[SAVE-CONFIG] ❌ Lỗi khi lưu config: {e}")
             import traceback
             traceback.print_exc()
+            
+            # Additional debug: try to identify which field causes the error
+            try:
+                print(f"[SAVE-CONFIG] 🔍 Debugging - checking each miner individually...")
+                for name, miner in self.miners.items():
+                    try:
+                        test_miner = {
+                            'coin_name': miner.get('coin_name'),
+                            'mining_tool': miner.get('mining_tool'),
+                            'config': miner.get('config')
+                        }
+                        json.dumps(test_miner)
+                        print(f"[SAVE-CONFIG]   ✅ {name} is JSON serializable")
+                    except Exception as miner_e:
+                        print(f"[SAVE-CONFIG]   ❌ {name} is NOT serializable: {miner_e}")
+                        print(f"[SAVE-CONFIG]      Miner keys: {list(miner.keys())}")
+                        for key, value in miner.items():
+                            print(f"[SAVE-CONFIG]        - {key}: {type(value).__name__}")
+            except Exception as debug_e:
+                print(f"[SAVE-CONFIG] Debug failed: {debug_e}")
+            
             return False
     
     def download_file(self, filename, coin_dir):
@@ -1141,12 +1193,9 @@ def update_config():
             }
         ]
     }
-    
-    Query params: ?stop_all_first=true (to stop all miners before update)
     """
     try:
         data = request.get_json()
-        stop_all_first = request.args.get('stop_all_first', 'false').lower() == 'true'
         
         # Support both old format (array) and new format (object with miners array)
         if isinstance(data, dict) and 'miners' in data:
@@ -1164,35 +1213,6 @@ def update_config():
             last_sync_config = None
         else:
             return jsonify({'success': False, 'message': 'Config phải là object với field "miners" hoặc array'}), 400
-        
-        # Option to stop all miners first
-        if stop_all_first:
-            print("[CẬP NHẬT] Đang dừng tất cả miners trước khi cập nhật cấu hình...")
-            running_miners = []
-            for name, miner in mining_manager.miners.items():
-                if miner.get('status') == 'running':
-                    running_miners.append(name)
-            
-            for name in running_miners:
-                print(f"[CẬP NHẬT] Đang dừng {name}...")
-                stop_result = mining_manager.stop_miner(name)
-                if stop_result['success']:
-                    print(f"[CẬP NHẬT] Đã dừng {name}")
-                else:
-                    print(f"[CẬP NHẬT] Không thể dừng {name}: {stop_result['message']}")
-            
-            if running_miners:
-                print(f"[CẬP NHẬT] Đã dừng {len(running_miners)} miners, chờ 2 giây...")
-                time.sleep(2)
-                
-                # Force kill any remaining mining processes
-                print("[CẬP NHẬT] Đang kiểm tra và force kill các process mining còn lại...")
-                active_tools = mining_manager.get_active_mining_tools()
-                if active_tools:
-                    print(f"[CẬP NHẬT] Tìm thấy các tool còn hoạt động: {active_tools}")
-                    kill_result = mining_manager.kill_all_miners_by_name(active_tools)
-                    print(f"[CẬP NHẬT] Kết quả force kill: {kill_result}")
-                    time.sleep(3)  # Additional wait after force kill
         
         # Process each miner config
         results = []
@@ -1236,25 +1256,33 @@ def update_config():
             })
         
         # Save config with new format (BEFORE auto-restart to ensure it's saved)
+        print("[CẬP NHẬT] 📝 Chuẩn bị lưu config...")
+        print(f"[CẬP NHẬT] - last_sync_config: {mining_manager.last_sync_config}")
+        print(f"[CẬP NHẬT] - auto_start: {mining_manager.auto_start_enabled}")
+        print(f"[CẬP NHẬT] - Số miners: {len(mining_manager.miners)}")
+        for name, miner in mining_manager.miners.items():
+            print(f"[CẬP NHẬT]   + {name}: coin={miner.get('coin_name')}, tool={miner.get('mining_tool')}, status={miner.get('status')}")
+        
         config_saved = mining_manager.save_config()
         if not config_saved:
             print("[CẬP NHẬT] ⚠️ Cảnh báo: Không thể lưu config!")
+        else:
+            print("[CẬP NHẬT] ✅ Config đã được lưu thành công")
         
         # Check if auto-restart is needed
         should_auto_restart = mining_manager.auto_start_enabled
         
-        # Return response immediately
+        # Return response immediately (simple, no stop/start info)
         response = {
             'success': True,
             'updated': len([r for r in results if r['success']]),
             'total': len(results),
             'last_sync_config': mining_manager.last_sync_config,
             'auto_start_enabled': mining_manager.auto_start_enabled,
-            'results': results,
-            'message': 'Config updated successfully. Auto-restart will happen in background.' if should_auto_restart else 'Config updated successfully.'
+            'results': results
         }
         
-        # Trigger auto-restart in background thread if enabled
+        # Trigger auto-restart in background thread if enabled (client không cần biết chi tiết này)
         if should_auto_restart:
             print("[CẬP NHẬT] 🔄 auto_start=true, khởi động background thread để restart miners...")
             
